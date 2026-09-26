@@ -483,6 +483,8 @@ def maybe_send_heartbeat(
         db.insert_alert("heartbeat", msg, delivered=False,
                         error="telegram disabled/not configured", conn=conn)
 
+    db.set_state("last_heartbeat_date", today, conn=conn)
+
 
 _FORECAST_WARNING_STATE_KEY = "last_forecast_warning_ts"
 _FORECAST_WARNING_THROTTLE_HOURS = 3
@@ -562,5 +564,3 @@ def maybe_send_forecast_warning(
 
     db.set_state(_FORECAST_WARNING_STATE_KEY, now_dt.isoformat(timespec="seconds"), conn=conn)
     return True
-
-    db.set_state("last_heartbeat_date", today, conn=conn)

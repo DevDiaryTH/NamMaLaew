@@ -23,6 +23,7 @@ Returns {a, b, n, n_rain, r2, fitted_at} or None.
 
 from __future__ import annotations
 
+import bisect
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -61,25 +62,21 @@ def _corrected_levels(conn) -> dict[int, float]:
     return {r["reading_id"]: r["true_level_index"] for r in rows}
 
 
-def _nearest_level(rows: list, ts_target: datetime, window_minutes: int = _NEAR_MINUTES,
-                   corrections: dict | None = None) -> float | None:
-    """Find the reading nearest to ts_target within ±window_minutes; return its level."""
-    corrections = corrections or {}
+def _nearest_level(times: list[float], levels: list[float], ts_target: datetime,
+                   window_minutes: int = _NEAR_MINUTES) -> float | None:
+    """Level of the reading nearest to ts_target within ±window_minutes, or None.
+
+    times must be sorted ascending (epoch seconds) and aligned with levels.
+    """
+    target = ts_target.timestamp()
+    i = bisect.bisect_left(times, target)
     best = None
     best_delta = None
-    for r in rows:
-        try:
-            dt = _parse_ts(r["ts"])
-        except (ValueError, TypeError):
-            continue
-        delta = abs((dt - ts_target).total_seconds())
-        if delta > window_minutes * 60:
-            continue
-        if best_delta is None or delta < best_delta:
-            best_delta = delta
-            level = corrections.get(r["id"], r["level_index"])
-            if level is not None:
-                best = level
+    for j in (i - 1, i):
+        if 0 <= j < len(times):
+            delta = abs(times[j] - target)
+            if delta <= window_minutes * 60 and (best_delta is None or delta < best_delta):
+                best, best_delta = levels[j], delta
     return best
 
 
@@ -113,6 +110,21 @@ def build_samples(conn, horizon_hours: int = 2) -> list[tuple[float, float]]:
         except (ValueError, TypeError):
             continue
 
+    times: list[float] = []
+    levels: list[float] = []
+    for r in reading_rows:
+        try:
+            dt = _parse_ts(r["ts"])
+        except (ValueError, TypeError):
+            continue
+        level = corrections.get(r["id"], r["level_index"])
+        if level is not None:
+            times.append(dt.timestamp())
+            levels.append(level)
+    order = sorted(range(len(times)), key=times.__getitem__)
+    times = [times[k] for k in order]
+    levels = [levels[k] for k in order]
+
     samples = []
     for hour_ts_str in list(weather_by_hour.keys()):
         try:
@@ -135,10 +147,8 @@ def build_samples(conn, horizon_hours: int = 2) -> list[tuple[float, float]]:
         rain_3h = sum(rain_hours)
 
         # Find readings near H and H+horizon
-        level_before = _nearest_level(reading_rows, H, corrections=corrections)
-        level_after = _nearest_level(
-            reading_rows, H + timedelta(hours=horizon_hours), corrections=corrections
-        )
+        level_before = _nearest_level(times, levels, H)
+        level_after = _nearest_level(times, levels, H + timedelta(hours=horizon_hours))
 
         if level_before is None or level_after is None:
             continue
@@ -224,12 +234,9 @@ def maybe_refit(conn, now: datetime | None = None, max_age_hours: int = 24) -> d
         except (ValueError, TypeError, json.JSONDecodeError):
             pass
 
-    samples = build_samples(conn)
-    rain_samples = [(r, d) for r, d in samples if r > 0.1]
-    n_rain = len(rain_samples)
-
     model = fit_rain_response(conn, now=now_dt)
     if model is None:
+        n_rain = sum(1 for r, _ in build_samples(conn) if r > 0.1)
         result: dict = {
             "status": "insufficient_data",
             "n_rain": n_rain,

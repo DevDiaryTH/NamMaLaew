@@ -655,3 +655,51 @@ class TestOverviewWithRainModel:
         finally:
             for var in ("WLM_DB", "WLM_SNAPSHOT_DIR", "DASHBOARD_PASSWORD"):
                 os.environ.pop(var, None)
+
+
+class TestOverviewRainContent:
+    """The overview must actually show the learning status / prediction, not just return 200."""
+
+    async def _overview_html(self, tmp_path, monkeypatch, seed) -> str:
+        from tests.conftest_web import get_session_cookie
+        from httpx import AsyncClient, ASGITransport
+
+        db_file = tmp_path / "test.db"
+        (tmp_path / "snapshots").mkdir()
+        monkeypatch.setenv("WLM_DB", str(db_file))
+        monkeypatch.setenv("WLM_SNAPSHOT_DIR", str(tmp_path / "snapshots"))
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "testpass")
+        conn = db.connect(db_file)
+        seed(conn)
+        conn.close()
+        sys.modules.pop("web.app", None)
+        import web.app
+        async with AsyncClient(transport=ASGITransport(app=web.app.app), base_url="http://test") as c:
+            c.cookies.update(await get_session_cookie(c))
+            resp = await c.get("/")
+        assert resp.status_code == 200
+        return resp.text
+
+    @pytest.mark.asyncio
+    async def test_shows_learning_progress(self, tmp_path, monkeypatch):
+        def seed(conn):
+            db.set_state("rain_model", json.dumps({
+                "status": "insufficient_data", "n_rain": 7, "needed": 20,
+                "fitted_at": "2026-09-27T00:00:00+00:00"}), conn=conn)
+        html = await self._overview_html(tmp_path, monkeypatch, seed)
+        assert "7/20" in html
+
+    @pytest.mark.asyncio
+    async def test_shows_prediction(self, tmp_path, monkeypatch):
+        def seed(conn):
+            now = datetime.now(timezone.utc)
+            db.set_state("rain_model", json.dumps({
+                "a": 2.0, "b": 0.0, "n": 30, "n_rain": 25, "r2": 0.8,
+                "fitted_at": now.isoformat(timespec="seconds")}), conn=conn)
+            db.insert_reading({"status": "normal", "level_index": 20.0, "confidence": 0.9}, conn=conn)
+            nxt = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            db.upsert_weather(nxt.isoformat(timespec="seconds"), 5.0, conn=conn)
+        html = await self._overview_html(tmp_path, monkeypatch, seed)
+        # 5 mm forecast * a=2 → rise ~10
+        assert "5.0 mm" in html
+        assert "+10.0" in html

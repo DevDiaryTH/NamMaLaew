@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -269,16 +270,17 @@ async def overview(request: Request):
             site_lat = None
             site_lon = None
 
-        # Rain model: prediction and fallback ETA
-        rain_prediction = wlm_rain_model.predict_rise(conn)
-        rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
-        if eta is None and rain_eta is not None:
-            eta = rain_eta
-        rain_model_status = wlm_db.get_state("rain_model", conn=conn)
+        # Rain model: prediction and fallback ETA; a failure here must not blank the overview
         try:
-            import json as _json
-            _rm = _json.loads(rain_model_status) if rain_model_status else None
+            rain_prediction = wlm_rain_model.predict_rise(conn)
+            rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
+            if eta is None and rain_eta is not None:
+                eta = rain_eta
+            rain_model_status = wlm_db.get_state("rain_model", conn=conn)
+            _rm = json.loads(rain_model_status) if rain_model_status else None
         except Exception:
+            logger.exception("Rain model error")
+            rain_prediction = None
             _rm = None
 
         conn.close()
@@ -1040,8 +1042,12 @@ async def api_summary(request: Request, _=Depends(require_auth)):
         slope_r2 = slope_data["r2"] if slope_data else None
         eta = web_metrics.compute_eta_to_critical(conn, level_critical, slope=slope_data)
         health = web_metrics.get_system_health(conn)
-        rain_prediction = wlm_rain_model.predict_rise(conn)
-        rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
+        try:
+            rain_prediction = wlm_rain_model.predict_rise(conn)
+            rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
+        except Exception:
+            logger.exception("Rain model error")
+            rain_prediction = rain_eta = None
         conn.close()
     except Exception as e:
         logger.exception("API summary error")
