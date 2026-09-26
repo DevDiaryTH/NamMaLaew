@@ -163,6 +163,57 @@ def compute_eta_to_critical(
     }
 
 
+def compute_rain_eta(
+    conn: sqlite3.Connection,
+    level_critical: float,
+    prediction: Optional[dict],
+    horizon_hours: int = 3,
+) -> Optional[dict]:
+    """Return an ETA dict based on forecast rain, or None.
+
+    If predicted_level < level_critical: None (rain won't reach critical).
+    Otherwise interpolate: eta_hours = horizon * (level_critical - current) / predicted_rise.
+    The returned label is marked as rain-based, e.g. "~2h 10m (rain forecast)".
+    """
+    if prediction is None:
+        return None
+
+    current = prediction["current_level"]
+    predicted_level = prediction["predicted_level"]
+    predicted_rise = prediction["predicted_rise"]
+
+    if predicted_level < level_critical:
+        return None
+
+    if current >= level_critical:
+        return {
+            "slope": None,
+            "r2": prediction.get("r2"),
+            "eta_dt": None,
+            "hours": 0,
+            "minutes": 0,
+            "label": "already critical",
+            "rain_based": True,
+        }
+
+    if predicted_rise <= 0:
+        return None
+
+    hours_until = horizon_hours * (level_critical - current) / predicted_rise
+    eta_dt = _now_utc() + timedelta(hours=hours_until)
+    h = int(hours_until)
+    m = int((hours_until - h) * 60)
+    return {
+        "slope": None,
+        "r2": prediction.get("r2"),
+        "eta_dt": eta_dt,
+        "hours": h,
+        "minutes": m,
+        "label": f"~{h}h {m}m (rain forecast)",
+        "rain_based": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Stale detection
 # ---------------------------------------------------------------------------

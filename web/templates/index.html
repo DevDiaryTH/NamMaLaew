@@ -111,6 +111,32 @@
     {% endif %}
   </div>
 
+  <!-- Rain model / self-learning tile -->
+  <div class="bento-tile bento-tile-paper2">
+    <h3>◆ ฝน → น้ำ / RAIN RESPONSE</h3>
+    {% if rain_prediction %}
+      <div class="metric-row">
+        <span class="metric-label">ฝน 3 ชม.:</span>
+        <span class="metric-value">{{ "%.1f"|format(rain_prediction.forecast_rain_mm) }} mm</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">คาดว่าขึ้น:</span>
+        <span class="metric-value text-warning">+{{ "%.1f"|format(rain_prediction.predicted_rise) }}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">คาด:</span>
+        <span class="metric-value">{{ "%.1f"|format(rain_prediction.predicted_level) }}</span>
+      </div>
+      <p class="text-muted" style="font-size:var(--text-sm);margin-top:4px;">
+        คาดว่าน้ำจะขึ้น ~{{ "%.1f"|format(rain_prediction.predicted_rise) }} ภายใน 3 ชม. (ฝนพยากรณ์ {{ "%.1f"|format(rain_prediction.forecast_rain_mm) }} mm · เรียนรู้จาก {{ rain_prediction.n_rain }} เหตุการณ์ · R² {{ "%.2f"|format(rain_prediction.r2) }})
+      </p>
+    {% elif rain_model_state and rain_model_state.status == "insufficient_data" %}
+      <p class="text-muted" style="font-size:var(--text-sm);">กำลังเรียนรู้ฝน→น้ำ: มีข้อมูล {{ rain_model_state.n_rain }}/{{ rain_model_state.needed }} เหตุการณ์</p>
+    {% else %}
+      <p class="text-muted" style="font-size:var(--text-sm);">NO RAIN MODEL DATA YET.</p>
+    {% endif %}
+  </div>
+
   <!-- System health tile -->
   <div class="bento-tile bento-tile-paper2">
     <h3>◆ SYSTEM HEALTH (24H)</h3>
