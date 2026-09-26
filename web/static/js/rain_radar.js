@@ -198,6 +198,8 @@
         return r.json();
       })
       .then(function (data) {
+        // A slower response for a radius the user has already switched away from.
+        if (data.enabled && data.radius_km !== currentRadius) return;
         renderCompass(data);
         updateMapMarkers(data);
       })
@@ -260,7 +262,7 @@
         x: CX, y: CY, "text-anchor": "middle", "dominant-baseline": "middle",
         fill: mutedColor, "font-size": "14", "font-family": "sans-serif"
       });
-      msg.textContent = data && !data.enabled ? "Rain data\ndisabled" : "No data";
+      msg.textContent = data && !data.enabled ? "Rain data disabled" : "No data";
       svg.appendChild(msg);
 
       updateCaption(data, null);

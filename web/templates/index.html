@@ -169,6 +169,45 @@
     </div>
   </div>
 
+  <!-- Rain Around tile (wide) -->
+  {% if site_lat is defined and site_lat is not none and site_lon is defined and site_lon is not none %}
+  <div class="bento-tile bento-tile-paper3 bento-tile-wide" id="rain-around-tile"
+       data-lat="{{ site_lat }}" data-lon="{{ site_lon }}">
+    <div class="card-header-row">
+      <h3>◆ RAIN AROUND / ฝนรอบพื้นที่</h3>
+      <div class="range-btns" id="rain-radius-btns">
+        <button class="rain-radius-btn" data-radius="10">10 KM</button>
+        <button class="rain-radius-btn active" data-radius="25">25 KM</button>
+        <button class="rain-radius-btn" data-radius="50">50 KM</button>
+      </div>
+    </div>
+    <div class="rain-around-layout">
+      <div class="rain-compass-area">
+        <svg id="rain-compass-svg" class="rain-compass-svg"
+             viewBox="0 0 300 300" aria-label="Rain direction compass"
+             role="img"></svg>
+        <p id="rain-compass-caption" class="rain-compass-caption"></p>
+        <p id="rain-compass-fetched" class="rain-compass-fetched"></p>
+      </div>
+      <div class="rain-map-area">
+        <div id="rain-map" class="rain-map-container"></div>
+        <div class="rain-map-footer">
+          <span id="rain-radar-status"></span>
+          <span id="rain-frame-time" class="rain-frame-time"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="bento-tile bento-tile-paper3 bento-tile-wide">
+    <h3>◆ RAIN AROUND / ฝนรอบพื้นที่</h3>
+    <p class="text-muted" style="font-size:var(--text-sm);">
+      กรุณากำหนดละติจูด/ลองจิจูดใน <a href="/settings">การตั้งค่า</a> เพื่อดูฝนรอบพื้นที่ ·
+      Set latitude/longitude in <a href="/settings">Settings</a> to see rain around the site.
+    </p>
+  </div>
+  {% endif %}
+
   <!-- Image quality chart tile (wide) -->
   <div class="bento-tile bento-tile-paper2 bento-tile-wide">
     <div class="card-header-row">
@@ -239,44 +278,6 @@
   </div>
   {% endif %}
 
-  <!-- Rain Around tile (wide) -->
-  {% if site_lat is defined and site_lat is not none and site_lon is defined and site_lon is not none %}
-  <div class="bento-tile bento-tile-paper3 bento-tile-wide" id="rain-around-tile"
-       data-lat="{{ site_lat }}" data-lon="{{ site_lon }}">
-    <div class="card-header-row">
-      <h3>◆ RAIN AROUND / ฝนรอบพื้นที่</h3>
-      <div class="range-btns" id="rain-radius-btns">
-        <button class="rain-radius-btn" data-radius="10">10 KM</button>
-        <button class="rain-radius-btn active" data-radius="25">25 KM</button>
-        <button class="rain-radius-btn" data-radius="50">50 KM</button>
-      </div>
-    </div>
-    <div class="rain-around-layout">
-      <div class="rain-compass-area">
-        <svg id="rain-compass-svg" class="rain-compass-svg"
-             viewBox="0 0 300 300" aria-label="Rain direction compass"
-             role="img"></svg>
-        <p id="rain-compass-caption" class="rain-compass-caption"></p>
-        <p id="rain-compass-fetched" class="rain-compass-fetched"></p>
-      </div>
-      <div class="rain-map-area">
-        <div id="rain-map" class="rain-map-container"></div>
-        <div class="rain-map-footer">
-          <span id="rain-radar-status"></span>
-          <span id="rain-frame-time" class="rain-frame-time"></span>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% else %}
-  <div class="bento-tile bento-tile-paper3 bento-tile-wide">
-    <h3>◆ RAIN AROUND / ฝนรอบพื้นที่</h3>
-    <p class="text-muted" style="font-size:var(--text-sm);">
-      กรุณากำหนดละติจูด/ลองจิจูดใน <a href="/settings">การตั้งค่า</a> เพื่อดูฝนรอบพื้นที่ ·
-      Set latitude/longitude in <a href="/settings">Settings</a> to see rain around the site.
-    </p>
-  </div>
-  {% endif %}
 
 </div><!-- /bento-grid -->
 
