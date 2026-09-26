@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -32,6 +33,7 @@ from wlm import learning as wlm_learning
 from wlm.capture import parse_cam_streams
 from web import metrics as web_metrics
 from wlm.rain_forecast import get_rain_forecast, ALLOWED_RADII
+from wlm import rain_model as wlm_rain_model
 
 logger = logging.getLogger("web.app")
 
@@ -267,6 +269,20 @@ async def overview(request: Request):
         except (ValueError, AttributeError):
             site_lat = None
             site_lon = None
+
+        # Rain model: prediction and fallback ETA; a failure here must not blank the overview
+        try:
+            rain_prediction = wlm_rain_model.predict_rise(conn)
+            rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
+            if eta is None and rain_eta is not None:
+                eta = rain_eta
+            rain_model_status = wlm_db.get_state("rain_model", conn=conn)
+            _rm = json.loads(rain_model_status) if rain_model_status else None
+        except Exception:
+            logger.exception("Rain model error")
+            rain_prediction = None
+            _rm = None
+
         conn.close()
     except Exception as e:
         logger.exception("Overview DB error")
@@ -284,6 +300,9 @@ async def overview(request: Request):
         level_warning = 50.0
         site_lat = None
         site_lon = None
+        rain_prediction = None
+        rain_eta = None
+        _rm = None
 
     ctx = _base_context(request)
     ctx.update({
@@ -301,6 +320,8 @@ async def overview(request: Request):
         "level_warning": level_warning,
         "site_lat": site_lat,
         "site_lon": site_lon,
+        "rain_prediction": rain_prediction,
+        "rain_model_state": _rm,
     })
     return templates.TemplateResponse(request, "index.html", ctx)
 
@@ -1021,6 +1042,12 @@ async def api_summary(request: Request, _=Depends(require_auth)):
         slope_r2 = slope_data["r2"] if slope_data else None
         eta = web_metrics.compute_eta_to_critical(conn, level_critical, slope=slope_data)
         health = web_metrics.get_system_health(conn)
+        try:
+            rain_prediction = wlm_rain_model.predict_rise(conn)
+            rain_eta = web_metrics.compute_rain_eta(conn, level_critical, rain_prediction)
+        except Exception:
+            logger.exception("Rain model error")
+            rain_prediction = rain_eta = None
         conn.close()
     except Exception as e:
         logger.exception("API summary error")
@@ -1029,6 +1056,8 @@ async def api_summary(request: Request, _=Depends(require_auth)):
     # Serialize eta datetimes
     if eta and eta.get("eta_dt"):
         eta = {**eta, "eta_dt": eta["eta_dt"].isoformat()}
+    if rain_eta and rain_eta.get("eta_dt"):
+        rain_eta = {**rain_eta, "eta_dt": rain_eta["eta_dt"].isoformat()}
 
     return {
         "summary": summary,
@@ -1039,6 +1068,8 @@ async def api_summary(request: Request, _=Depends(require_auth)):
         "level_critical": level_critical,
         "level_warning": level_warning,
         "health": health,
+        "rain_prediction": rain_prediction,
+        "rain_eta": rain_eta,
     }
 
 
