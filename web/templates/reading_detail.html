@@ -24,10 +24,10 @@
       <div class="metric-row"><span class="metric-label">LEVEL INDEX:</span><span class="metric-value" style="font-variant-numeric:tabular-nums">{{ "%.1f"|format(reading.level_index) if reading.level_index is not none else "—" }}</span></div>
       <div class="metric-row"><span class="metric-label">CONFIDENCE:</span><span class="metric-value">{{ "%.0f"|format(reading.confidence * 100) if reading.confidence is not none else "—" }}%</span></div>
       {% if reading.description %}
-        <div class="metric-row"><span class="metric-label">DESCRIPTION:</span><span>{{ reading.description }}</span></div>
+        <div class="metric-row metric-row--stack"><span class="metric-label">DESCRIPTION:</span><span>{{ reading.description }}</span></div>
       {% endif %}
       {% if reading.reason %}
-        <div class="metric-row"><span class="metric-label">REASON:</span><span>{{ reading.reason }}</span></div>
+        <div class="metric-row metric-row--stack"><span class="metric-label">REASON:</span><span>{{ reading.reason }}</span></div>
       {% endif %}
       {% if reading.distance_to_critical %}
         <div class="metric-row"><span class="metric-label">DIST. CRITICAL:</span><span>{{ reading.distance_to_critical }}</span></div>
@@ -76,7 +76,7 @@
         <div class="img-placeholder" style="padding:var(--space-sm);font-size:var(--text-xs);">NO IMAGE</div>
       {% endif %}
       <div class="metric-row"><span class="metric-label">CAPTURED:</span><span>{{ "YES" if lr.ok else "NO" }}</span></div>
-      {% if lr.observation %}<div class="metric-row"><span class="metric-label">OBSERVATION:</span><span>{{ lr.observation }}</span></div>{% endif %}
+      {% if lr.observation %}<div class="metric-row metric-row--stack"><span class="metric-label">OBSERVATION:</span><span>{{ lr.observation }}</span></div>{% endif %}
       {% if lr.water_coverage_pct is not none %}<div class="metric-row"><span class="metric-label">COVERAGE:</span><span>{{ "%.0f"|format(lr.water_coverage_pct) }}%</span></div>{% endif %}
       {% if lr.brightness is not none %}<div class="metric-row"><span class="metric-label">BRIGHTNESS:</span><span>{{ "%.1f"|format(lr.brightness) }}</span></div>{% endif %}
       {% if lr.sharpness is not none %}<div class="metric-row"><span class="metric-label">SHARPNESS:</span><span>{{ "%.1f"|format(lr.sharpness) }}</span></div>{% endif %}

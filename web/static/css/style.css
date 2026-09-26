@@ -610,6 +610,17 @@ textarea.form-control { min-height: 100px; resize: vertical; }
   color: var(--color-ink);
   font-weight: 600;
 }
+/* Values shrink and wrap inside the row instead of pushing past the card edge. */
+.metric-row > :not(.metric-label) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Free-text values (observation, reason) get the full row width under their label. */
+.metric-row--stack {
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+.metric-row--stack .metric-label { min-width: 0; }
 
 /* Text colour utilities */
 .text-normal   { color: var(--color-status-normal); }
@@ -963,7 +974,9 @@ textarea.form-control { min-height: 100px; resize: vertical; }
 }
 
 .detail-img {
-  max-width: 100%;
+  display: block;
+  /* Leave room for the 4px offset shadow so it stays inside the parent. */
+  max-width: calc(100% - 4px);
   border: var(--border-card);
   box-shadow: var(--shadow-card);
 }
@@ -987,11 +1000,12 @@ textarea.form-control { min-height: 100px; resize: vertical; }
 
 .lens-detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: var(--space-md);
 }
 
 .lens-detail-card {
+  min-width: 0;
   background: var(--color-paper-3);
   border: var(--border-card);
   box-shadow: var(--shadow-card);
@@ -1302,3 +1316,6 @@ hr {
   line-height: 1.35;
   padding: var(--space-3xs) var(--space-2xs);
 }
+
+/* In a metric row the badge sizes to its text rather than stretching or overflowing. */
+.metric-row .badge-line-pos { max-width: 100%; }
