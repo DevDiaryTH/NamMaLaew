@@ -28,6 +28,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from wlm import db as wlm_db
 from wlm import settings as wlm_settings
 from wlm import lines as wlm_lines
+from wlm import learning as wlm_learning
 from wlm.capture import parse_cam_streams
 from web import metrics as web_metrics
 from wlm.rain_forecast import get_rain_forecast, ALLOWED_RADII
@@ -353,17 +354,114 @@ async def reading_detail(request: Request, reading_id: int):
     try:
         conn = wlm_db.connect()
         reading = web_metrics.get_reading(conn, reading_id)
+        feedback = wlm_learning.get_feedback(reading_id, conn=conn)
         conn.close()
     except Exception:
         logger.exception("Reading detail DB error")
         reading = None
+        feedback = None
 
     if reading is None:
         raise HTTPException(status_code=404, detail="Reading not found")
 
     ctx = _base_context(request)
     ctx["reading"] = reading
+    ctx["feedback"] = feedback
+    ctx["flash"] = request.session.pop("flash", None)
+    ctx["flash_error"] = request.session.pop("flash_error", None)
     return templates.TemplateResponse(request, "reading_detail.html", ctx)
+
+
+# --- Feedback ---
+
+@app.post("/reading/{reading_id}/feedback", response_class=HTMLResponse)
+async def reading_feedback(request: Request, reading_id: int):
+    pwd = _get_password()
+    if not pwd:
+        return _no_password_response(request)
+    if not _is_authenticated(request):
+        return _redirect_login(request)
+
+    form = await request.form()
+    form_data = dict(form)
+
+    if not _check_csrf(request, form_data.get("csrf_token", "")):
+        raise HTTPException(status_code=400, detail="Invalid CSRF token")
+
+    # Verify reading exists
+    try:
+        conn = wlm_db.connect()
+        exists = conn.execute(
+            "SELECT id FROM readings WHERE id = ?", (reading_id,)
+        ).fetchone()
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not exists:
+        raise HTTPException(status_code=404, detail="Reading not found")
+
+    verdict = form_data.get("verdict", "").strip()
+    true_status = form_data.get("true_status", "").strip() or None
+    true_level_index_raw = form_data.get("true_level_index", "").strip()
+    note = form_data.get("note", "").strip() or None
+    as_example = form_data.get("as_example") in ("1", "on", "true")
+
+    true_level_index: float | None = None
+    if true_level_index_raw:
+        try:
+            true_level_index = float(true_level_index_raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="true_level_index must be a number")
+
+    try:
+        conn = wlm_db.connect()
+        wlm_learning.record_feedback(
+            reading_id=reading_id,
+            verdict=verdict,
+            true_status=true_status,
+            true_level_index=true_level_index,
+            note=note,
+            as_example=as_example,
+            conn=conn,
+        )
+        conn.close()
+    except ValueError as e:
+        request.session["flash_error"] = f"Feedback not saved: {e}"
+        return RedirectResponse(url=f"/reading/{reading_id}", status_code=302)
+    except Exception as e:
+        logger.exception("Feedback save error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    request.session["flash"] = "Feedback saved."
+    return RedirectResponse(url=f"/reading/{reading_id}", status_code=302)
+
+
+# --- Remove example ---
+
+@app.post("/learning/examples/{reading_id}/remove", response_class=HTMLResponse)
+async def remove_example(request: Request, reading_id: int):
+    pwd = _get_password()
+    if not pwd:
+        return _no_password_response(request)
+    if not _is_authenticated(request):
+        return _redirect_login(request)
+
+    form = await request.form()
+    if not _check_csrf(request, form.get("csrf_token", "")):
+        raise HTTPException(status_code=400, detail="Invalid CSRF token")
+
+    try:
+        conn = wlm_db.connect()
+        wlm_learning.remove_example(reading_id, conn=conn)
+        conn.close()
+    except Exception as e:
+        logger.exception("Remove example error")
+        request.session["flash_error"] = f"Remove failed: {e}"
+        return RedirectResponse(url="/settings", status_code=302)
+
+    request.session["flash"] = "Example removed."
+    return RedirectResponse(url="/settings", status_code=302)
 
 
 # --- Alerts page ---
@@ -419,6 +517,8 @@ async def settings_page(request: Request):
         sources = _sources_for_settings(conn)
         siren_muted_since = wlm_db.get_state("siren_muted", default="", conn=conn) or ""
         setup = _site_setup_status(conn)
+        examples = wlm_learning.list_examples(conn=conn)
+        feedback_count = conn.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
         conn.close()
     except Exception:
         logger.exception("Settings DB error")
@@ -426,6 +526,23 @@ async def settings_page(request: Request):
         sources = {s.key: "default" for s in wlm_settings.SPECS}
         siren_muted_since = ""
         setup = None
+        examples = []
+        feedback_count = 0
+
+    snap_dir = wlm_db.snapshot_dir()
+    # Build per-example thumbnail path (first image in the example folder, relative to snap_dir)
+    examples_with_thumb = []
+    for ex in examples:
+        thumb_path = None
+        if ex.get("example_dir"):
+            folder = snap_dir / ex["example_dir"]
+            imgs = sorted(folder.glob("*.jpg")) if folder.exists() else []
+            if imgs:
+                try:
+                    thumb_path = str(imgs[0].relative_to(snap_dir))
+                except ValueError:
+                    thumb_path = None
+        examples_with_thumb.append({**ex, "thumb_path": thumb_path})
 
     ctx = _base_context(request)
     ctx.update({
@@ -434,6 +551,8 @@ async def settings_page(request: Request):
         "sources": sources,
         "siren_muted_since": siren_muted_since,
         "setup": setup,
+        "examples": examples_with_thumb,
+        "feedback_count": feedback_count,
         "flash": request.session.pop("flash", None),
         "flash_error": request.session.pop("flash_error", None),
     })
@@ -511,6 +630,15 @@ def _validate_settings(form_data: dict) -> list[str]:
         except (ValueError, TypeError):
             errors.append("longitude must be a number")
 
+    lme = form_data.get("learning_max_examples", "").strip()
+    if lme:
+        try:
+            lme_i = int(lme)
+            if not (0 <= lme_i <= 6):
+                errors.append("learning_max_examples must be 0-6")
+        except (ValueError, TypeError):
+            errors.append("learning_max_examples must be an integer")
+
     return errors
 
 
@@ -546,6 +674,8 @@ async def settings_save(request: Request):
             "current": current,
             "sources": sources,
             "setup": setup,
+            "examples": [],
+            "feedback_count": 0,
             "flash": None,
             "flash_error": "; ".join(errors),
         })

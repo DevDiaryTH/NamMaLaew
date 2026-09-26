@@ -76,6 +76,19 @@ CREATE TABLE IF NOT EXISTS weather (
     precipitation_mm REAL,
     fetched_at       TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    reading_id        INTEGER NOT NULL UNIQUE REFERENCES readings(id) ON DELETE CASCADE,
+    ts                TEXT NOT NULL,
+    verdict           TEXT NOT NULL,             -- correct | wrong
+    true_status       TEXT,                      -- normal | warning | critical
+    true_level_index  REAL,
+    note              TEXT,
+    is_example        INTEGER NOT NULL DEFAULT 0,
+    example_dir       TEXT                       -- relative to snapshot_dir(), NULL when not an example
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_reading ON feedback(reading_id);
 """
 
 
@@ -89,6 +102,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "line_position" not in cols:
         conn.execute("ALTER TABLE lens_readings ADD COLUMN line_position TEXT")
         conn.commit()
+    # feedback table is created by SCHEMA (CREATE IF NOT EXISTS), no column migration needed
 
 
 def db_path() -> Path:
