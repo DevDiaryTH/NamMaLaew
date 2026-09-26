@@ -13,6 +13,11 @@ from wlm import db
 from wlm.alerts import process_alerts, maybe_send_heartbeat
 
 
+def _recent_ts() -> str:
+    """A pending-critical timestamp young enough that _drop_stale_pending keeps it."""
+    return (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
+
+
 def _make_result(status: str = "normal", level_index: float = 10.0, desc: str = "dry") -> dict:
     return {
         "level_status": status,
@@ -240,7 +245,7 @@ class TestCriticalConfirm:
         db.set_setting("telegram_bot_token", "tok", conn=tmp_db)
         db.set_setting("telegram_chat_id", "123", conn=tmp_db)
         # Simulate pending state from first critical
-        db.set_state("critical_pending", "2026-09-26T06:00:00+00:00", conn=tmp_db)
+        db.set_state("critical_pending", _recent_ts(), conn=tmp_db)
         result = _make_result("critical", 92.0)
 
         # photo_path=None → _send_alert uses send_message (not send_photo)
@@ -268,7 +273,7 @@ class TestCriticalConfirm:
         db.set_setting("critical_confirm", "1", conn=tmp_db)
         db.set_state("last_status", "warning", conn=tmp_db)
         # Simulate pending from first critical
-        db.set_state("critical_pending", "2026-09-26T06:00:00+00:00", conn=tmp_db)
+        db.set_state("critical_pending", _recent_ts(), conn=tmp_db)
         result = _make_result("warning", 60.0)
 
         with patch("wlm.alerts.tg.send_photo") as mock_photo, \
@@ -294,7 +299,7 @@ class TestCriticalConfirm:
     def test_first_critical_then_unknown_not_confirmed(self, tmp_db):
         """Re-check returning unknown also clears pending without alerting."""
         db.set_setting("critical_confirm", "1", conn=tmp_db)
-        db.set_state("critical_pending", "2026-09-26T06:00:00+00:00", conn=tmp_db)
+        db.set_state("critical_pending", _recent_ts(), conn=tmp_db)
         result = _make_result("unknown", None)
         result["level_index"] = None
 
