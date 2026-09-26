@@ -1382,75 +1382,24 @@ hr {
    RAIN AROUND TILE
    ========================================================================== */
 
-/* Two-column layout: compass left, map right */
-.rain-around-layout {
-  display: flex;
-  gap: var(--space-md);
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-
-/* Compass column */
-.rain-compass-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-xs);
-  flex: 0 0 auto;
-}
-
-.rain-compass-svg {
-  width: 200px;
-  height: 200px;
-  display: block;
-}
-
-.rain-compass-caption {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-  text-align: center;
-  max-width: 220px;
-  line-height: 1.4;
-}
-
-.rain-compass-fetched {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  text-align: center;
-}
-
-/* Map column */
-.rain-map-area {
-  flex: 1 1 280px;
+/* Button groups: radius row + time row, right-aligned in the header */
+.rain-controls {
   display: flex;
   flex-direction: column;
   gap: var(--space-2xs);
-  min-width: 0;
+  align-items: flex-end;
 }
 
-.rain-map-container {
-  height: 320px;
-  border: var(--border-card);
-}
-
-.rain-map-footer {
+.rain-radius-row,
+.rain-time-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  gap: var(--space-xs);
   flex-wrap: wrap;
+  gap: var(--space-2xs);
 }
 
-.rain-frame-time {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Radius buttons: reuse range-btn styles, scoped to rain tile */
-.rain-radius-btn {
+/* Shared button base for both radius and time selectors */
+.rain-radius-btn,
+.rain-time-btn {
   display: inline-flex;
   align-items: center;
   padding: var(--space-3xs) var(--space-xs);
@@ -1470,40 +1419,98 @@ hr {
   white-space: nowrap;
 }
 
-.rain-radius-btn:hover {
+.rain-radius-btn:hover,
+.rain-time-btn:hover {
   transform: translate(-2px, -2px);
   box-shadow: var(--shadow-card-hover);
 }
 
-.rain-radius-btn:active {
+.rain-radius-btn:active,
+.rain-time-btn:active {
   transform: translate(2px, 2px);
   box-shadow: var(--shadow-card-press);
 }
 
-.rain-radius-btn.active {
+.rain-radius-btn.active,
+.rain-time-btn.active {
   background: var(--color-accent-2);
   color: var(--color-paper);
   box-shadow: inset 2px 2px 0 rgba(0,0,0,0.2);
 }
 
-.rain-radius-btn:focus-visible {
+.rain-radius-btn:focus-visible,
+.rain-time-btn:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
-/* Narrow screens: stack compass above map */
+.rain-time-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Full-width map */
+.rain-map-container {
+  width: 100%;
+  height: 380px;
+  border: var(--border-card);
+}
+
+.rain-map-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-top: var(--space-2xs);
+}
+
+.rain-frame-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Forecast legend (shown only in +N mode) */
+.rain-forecast-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-2xs);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.rain-legend-label {
+  font-weight: 600;
+}
+
+.rain-legend-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rain-legend-swatch::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  background: var(--color-chart-rain);
+  opacity: var(--swatch-o, 0.5);
+  border: 1px solid var(--color-rule);
+  flex-shrink: 0;
+}
+
+/* Narrow screens: reduce map height, ensure buttons wrap */
 @media (max-width: 700px) {
-  .rain-around-layout {
-    flex-direction: column;
+  .rain-map-container {
+    height: 300px;
   }
-  .rain-compass-area {
-    width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  .rain-map-area {
-    flex: 1 1 auto;
-    width: 100%;
+
+  .rain-controls {
+    align-items: flex-start;
   }
 }

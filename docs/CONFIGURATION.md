@@ -34,11 +34,15 @@ Settings resolve in this order: dashboard (SQLite) → `.env` → built-in defau
 
 Setting `LATITUDE` and `LONGITUDE` (or the equivalent dashboard settings) enables the **RAIN AROUND / ฝนรอบพื้นที่** tile on the overview page.
 
-**Compass** — shows precipitation at 8 cardinal/intercardinal points at the chosen radius (10, 25, or 50 km). Values are Open-Meteo model forecasts sampled at those 8 geographic points; they are model estimates, not radar observations.
+The tile shows a full-width Leaflet map with an OpenStreetMap base layer and a time selector:
 
-**Map** — a Leaflet map with an OpenStreetMap base layer and a RainViewer radar overlay. RainViewer free-tier tiles are served at native zoom levels up to z7 (Leaflet upscales for higher zooms). The map fetches radar frame data directly from `api.rainviewer.com` in the browser and animates past frames.
+**เรดาร์ · Radar** — animates RainViewer past-radar frames (roughly the last 2 hours). RainViewer free-tier tiles are served at native zoom levels up to z7; Leaflet upscales for higher zooms. No API key required.
 
-**External requests made by the browser:** `tile.openstreetmap.org` (map tiles) and `api.rainviewer.com` + `tilecache.rainviewer.com` (radar tiles). No API key is required for either service at the default usage level.
+**+1 ชม. / +2 ชม. / +3 ชม.** — draws an Open-Meteo model forecast on a 5 × 5 grid across the chosen radius (10, 25, or 50 km). Each grid point is one hourly forecast cell; fill opacity scales with rainfall intensity (sqrt scale, saturating at 5 mm/h). The footer shows the forecast window in local time and credits the model. Buttons for hours not yet returned by the API are disabled automatically.
+
+Forecast data is fetched from `GET /api/rain-forecast?radius=<km>` and cached server-side for 30 minutes. Each 5 × 5 = 25 grid points counts as 25 Open-Meteo API calls per refresh; the free tier allows 10,000 calls per day.
+
+**External requests made by the browser:** `tile.openstreetmap.org` (map tiles), `api.rainviewer.com` + `tilecache.rainviewer.com` (radar tiles). Forecast data is fetched from the local `/api/rain-forecast` endpoint, which in turn queries `api.open-meteo.com`.
 
 
 ## Settings editable from the dashboard (stored in SQLite, override .env)
