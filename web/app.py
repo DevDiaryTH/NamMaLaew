@@ -30,6 +30,7 @@ from wlm import settings as wlm_settings
 from wlm import lines as wlm_lines
 from wlm.capture import parse_cam_streams
 from web import metrics as web_metrics
+from wlm.rain_around import get_rain_around, ALLOWED_RADII
 
 logger = logging.getLogger("web.app")
 
@@ -259,6 +260,12 @@ async def overview(request: Request):
         rise_rate_pts = web_metrics.count_window_points(conn)
         siren_host = bool(wlm_settings.get("mqtt_host", conn=conn))
         siren_muted = bool(wlm_db.get_state("siren_muted", default="", conn=conn))
+        try:
+            site_lat = float(wlm_settings.get("latitude",  conn=conn).strip())
+            site_lon = float(wlm_settings.get("longitude", conn=conn).strip())
+        except (ValueError, AttributeError):
+            site_lat = None
+            site_lon = None
         conn.close()
     except Exception as e:
         logger.exception("Overview DB error")
@@ -274,6 +281,8 @@ async def overview(request: Request):
         siren_muted = False
         level_critical = 90.0
         level_warning = 50.0
+        site_lat = None
+        site_lon = None
 
     ctx = _base_context(request)
     ctx.update({
@@ -289,6 +298,8 @@ async def overview(request: Request):
         "siren_muted": siren_muted,
         "level_critical": level_critical,
         "level_warning": level_warning,
+        "site_lat": site_lat,
+        "site_lon": site_lon,
     })
     return templates.TemplateResponse(request, "index.html", ctx)
 
@@ -911,6 +922,22 @@ async def api_series(request: Request, range: str = "24h", _=Depends(require_aut
         logger.exception("API series error")
         raise HTTPException(status_code=500, detail=str(e))
     return data
+
+
+@app.get("/api/rain-around")
+async def api_rain_around(request: Request, radius: int = 25, _=Depends(require_auth)):
+    if radius not in ALLOWED_RADII:
+        raise HTTPException(status_code=400, detail=f"radius must be one of {list(ALLOWED_RADII)}")
+    try:
+        conn = wlm_db.connect()
+        data = get_rain_around(radius_km=radius, conn=conn)
+        conn.close()
+    except Exception as exc:
+        logger.warning("rain-around fetch failed: %s", exc)
+        raise HTTPException(status_code=502, detail="rain data unavailable")
+    if data is None:
+        return {"enabled": False}
+    return {"enabled": True, **data}
 
 
 @app.get("/api/readings")
