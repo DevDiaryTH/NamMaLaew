@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}ALERTS — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>ALERTS / การแจ้งเตือน</h2>
+</div>
+
+<div class="poster-block">
+  <p style="font-size:var(--text-sm);color:var(--color-muted);">{{ total }} ALERT{% if total != 1 %}S{% endif %} TOTAL</p>
+
+  {% if alerts %}
+  <div style="overflow-x:auto;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>TIME</th>
+          <th>KIND</th>
+          <th>DELIVERED</th>
+          <th>MESSAGE</th>
+          <th>ERROR</th>
+          <th>READING</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alerts %}
+        <tr>
+          <td class="td-ts" data-ts="{{ a.ts }}">{{ a.ts }}</td>
+          <td><span class="alert-kind kind-{{ a.kind }}">{{ a.kind | upper }}</span></td>
+          <td>
+            {% if a.delivered %}
+              <span class="text-normal" style="font-weight:600;">✓</span>
+            {% else %}
+              <span class="text-critical" style="font-weight:600;">✗</span>
+            {% endif %}
+          </td>
+          <td class="td-reason">{{ a.message | truncate(80) }}</td>
+          <td class="td-reason text-critical">{{ a.error or "" }}</td>
+          <td>
+            {% if a.reading_id %}
+              <a href="/reading/{{ a.reading_id }}" style="color:var(--color-accent-2);font-weight:600;">#{{ a.reading_id }}</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="/alerts?page={{ page - 1 }}" class="btn btn-secondary btn-sm">← PREV</a>
+    {% endif %}
+    <span class="page-info">PAGE {{ page }} / {{ pages }}</span>
+    {% if page < pages %}
+      <a href="/alerts?page={{ page + 1 }}" class="btn btn-secondary btn-sm">NEXT →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <p class="text-muted" style="text-align:center;padding:var(--space-2xl);">NO ALERTS YET.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}{% endblock %}

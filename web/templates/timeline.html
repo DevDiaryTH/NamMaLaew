@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}TIMELINE — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>TIMELINE / ประวัติ</h2>
+</div>
+
+<!-- Filters poster block -->
+<div class="card filter-bar">
+  <form method="GET" action="/timeline" class="filter-form">
+    <div class="filter-group">
+      <label>STATUS</label>
+      <select name="status" class="form-control form-control-sm">
+        <option value="" {% if not status_filter %}selected{% endif %}>ALL</option>
+        <option value="normal" {% if status_filter == 'normal' %}selected{% endif %}>NORMAL</option>
+        <option value="warning" {% if status_filter == 'warning' %}selected{% endif %}>WARNING</option>
+        <option value="critical" {% if status_filter == 'critical' %}selected{% endif %}>CRITICAL</option>
+        <option value="unknown" {% if status_filter == 'unknown' %}selected{% endif %}>UNKNOWN</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>RANGE</label>
+      <select name="range" class="form-control form-control-sm">
+        <option value="" {% if not range_filter %}selected{% endif %}>ALL TIME</option>
+        <option value="6h" {% if range_filter == '6h' %}selected{% endif %}>6 HOURS</option>
+        <option value="24h" {% if range_filter == '24h' %}selected{% endif %}>24 HOURS</option>
+        <option value="3d" {% if range_filter == '3d' %}selected{% endif %}>3 DAYS</option>
+        <option value="7d" {% if range_filter == '7d' %}selected{% endif %}>7 DAYS</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-secondary btn-sm">FILTER</button>
+    <a href="/timeline" class="btn btn-secondary btn-xs">CLEAR</a>
+    <span class="filter-count">{{ total }} READING{% if total != 1 %}S{% endif %}</span>
+  </form>
+</div>
+
+{% if readings %}
+<!-- Group readings by day (template-side grouping by looping and detecting date change) -->
+{% set ns = namespace(last_day='') %}
+{% for r in readings %}
+  {% set day = r.ts[:10] if r.ts else '' %}
+  {% if day != ns.last_day %}
+    {% if ns.last_day %}
+      </div><!-- /catalogue-grid -->
+    </div><!-- /day-group -->
+    <p class="ornament-divider" aria-hidden="true">✱ ✱ ✱ ✱</p>
+    {% endif %}
+    <div class="day-group">
+      <h3 class="day-heading">{{ day }}</h3>
+      <div class="catalogue-grid">
+    {% set ns.last_day = day %}
+  {% endif %}
+
+  <a href="/reading/{{ r.id }}" class="catalogue-card">
+    {% if r.composite_path %}
+      <img src="/snapshots/{{ r.composite_path }}" class="catalogue-card-thumb"
+           loading="lazy"
+           alt="Reading {{ r.id }}"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+      <div class="catalogue-card-thumb-placeholder halftone" style="display:none;" aria-hidden="true"></div>
+    {% else %}
+      <div class="catalogue-card-thumb-placeholder halftone" aria-hidden="true"></div>
+    {% endif %}
+
+    <span class="status-sticker status-{{ r.status }}">
+      {% if r.status == 'normal' %}NORMAL
+      {% elif r.status == 'warning' %}WARNING
+      {% elif r.status == 'critical' %}CRITICAL
+      {% else %}UNKNOWN{% endif %}
+    </span>
+
+    <div class="catalogue-card-level">{{ "%.1f"|format(r.level_index) if r.level_index is not none else "—" }}</div>
+    <div class="catalogue-card-ts" data-ts="{{ r.ts }}">{{ r.ts }}</div>
+
+    <!-- Line position badges with human-readable text -->
+    {% for lr in r.lenses %}
+      {% if lr.line_position %}
+        {% if lr.line_position == 'below_warning' %}
+          <span class="badge-line-pos badge-lp-below">{{ lr.label }}: BELOW WARNING</span>
+        {% elif lr.line_position == 'at_or_above_warning' %}
+          <span class="badge-line-pos badge-lp-warning">{{ lr.label }}: ≥ WARNING</span>
+        {% elif lr.line_position == 'at_or_above_critical' %}
+          <span class="badge-line-pos badge-lp-critical">{{ lr.label }}: ≥ CRITICAL</span>
+        {% elif lr.line_position == 'not_visible' %}
+          <span class="badge-line-pos badge-lp-none">{{ lr.label }}: CAN'T JUDGE</span>
+        {% elif lr.line_position == 'no_lines' %}
+          <span class="badge-line-pos badge-lp-none">{{ lr.label }}: NO LINES</span>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  </a>
+
+{% endfor %}
+
+{% if ns.last_day %}
+      </div><!-- /catalogue-grid -->
+    </div><!-- /day-group -->
+{% endif %}
+
+<!-- Pagination -->
+{% if pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a href="/timeline?page={{ page - 1 }}&status={{ status_filter }}&range={{ range_filter }}" class="btn btn-secondary btn-sm">← PREV</a>
+  {% endif %}
+  <span class="page-info">PAGE {{ page }} / {{ pages }}</span>
+  {% if page < pages %}
+    <a href="/timeline?page={{ page + 1 }}&status={{ status_filter }}&range={{ range_filter }}" class="btn btn-secondary btn-sm">NEXT →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card" style="text-align:center;padding:var(--space-2xl);">
+  <p class="text-muted">NO READINGS FOUND.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}{% endblock %}

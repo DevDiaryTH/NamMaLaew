@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="th-TH">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}NAMMALAEW / น้ำมาแล้ว!{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/tokens.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a href="/" class="masthead-wordmark">NAMMALAEW / น้ำมาแล้ว!</a>
+      <nav class="masthead-nav" aria-label="Main navigation">
+        <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">OVERVIEW</a>
+        <a href="/timeline" class="{% if request.url.path.startswith('/timeline') or request.url.path.startswith('/reading') %}active{% endif %}">TIMELINE</a>
+        <a href="/alerts" class="{% if request.url.path == '/alerts' %}active{% endif %}">ALERTS</a>
+        <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">SETTINGS</a>
+        <a href="/lines" class="{% if request.url.path == '/lines' %}active{% endif %}">LINE EDITOR</a>
+        <a href="/logout">LOGOUT</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="marquee" aria-label="Live status ticker">
+    <div class="marquee-track" id="marquee-track" aria-hidden="true">
+      <span id="marquee-inner">NAMMALAEW ◆ น้ำมาแล้ว! ◆ — ◆ </span><span aria-hidden="true">NAMMALAEW ◆ น้ำมาแล้ว! ◆ — ◆ </span>
+    </div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+  <script src="/static/js/timestamps.js" defer></script>
+  <script>
+  /* Live marquee — fetches /api/summary and fills the ticker; keeps static text on fail */
+  (function () {
+    var STATUS_TH = { normal: 'ปกติ', warning: 'เตือนภัย', critical: 'วิกฤต', unknown: 'ไม่ทราบ' };
+    function fillMarquee(data) {
+      var summary = (data && data.summary) || {};
+      var level = summary.level_index != null ? (+summary.level_index).toFixed(1) : '—';
+      var status = (summary.status || 'unknown').toUpperCase();
+      var statusTh = STATUS_TH[summary.status] || '';
+      var stalePart = data && data.stale ? ' ◆ STALE' : '';
+      var timeStr = '';
+      if (summary.ts) {
+        var d = new Date(summary.ts);
+        if (!isNaN(d)) timeStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+      }
+      var sep = ' ◆ ';
+      var text = 'LEVEL ' + level + sep + status + (statusTh ? ' / ' + statusTh : '') + stalePart + (timeStr ? sep + 'UPDATED ' + timeStr : '') + sep;
+      var track = document.getElementById('marquee-track');
+      if (track) { track.querySelectorAll('span').forEach(function (s) { s.textContent = text; }); }
+    }
+    fetch('/api/summary')
+      .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+      .then(fillMarquee)
+      .catch(function () {});
+  })();
+  </script>
+</body>
+</html>

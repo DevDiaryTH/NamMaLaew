@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-09-25",
+    "scope": "app",
+    "macrostructure": "Stat-Led (overview) · Catalogue (timeline) · poster blocks (forms)",
+    "theme": "carnival",
+    "drop": "cold-snap (day) / studio-night (night)",
+    "nav": "N6 Masthead",
+    "footer": "Ft8 Marquee (live status)",
+    "enrichment": "none",
+    "brief": "Water Level Monitor dashboard redesign · design-system: design.md"
+  }
+]

@@ -1,0 +1,8 @@
+python-dotenv
+Pillow
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+itsdangerous
+paho-mqtt>=2.0

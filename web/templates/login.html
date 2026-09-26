@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="th-TH">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LOGIN — NAMMALAEW / น้ำมาแล้ว!</title>
+  <link rel="stylesheet" href="/static/css/tokens.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="standalone-shell">
+    <div class="standalone-card">
+      <p class="login-wordmark">NAMMALAEW / น้ำมาแล้ว!</p>
+
+      {% if error %}
+        <div class="alert alert-error" style="margin-bottom:var(--space-md);">{{ error }}</div>
+      {% endif %}
+
+      <form method="POST" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="form-group">
+          <label for="password">PASSWORD</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            class="form-control"
+            autofocus
+            autocomplete="current-password"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">LOGIN</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Credentials — never commit
+.env
+
+# Python virtual environment
+.venv/
+
+# Runtime data
+snapshots/
+logs/
+state.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# go2rtc (binary + config holds Xiaomi cloud token)
+go2rtc/go2rtc
+go2rtc/go2rtc.yaml
+go2rtc/streams.yaml
+go2rtc/go2rtc.log
+data/
+.pytest_cache/
+__pycache__/

@@ -1,0 +1,15 @@
+# go2rtc/go2rtc.yaml — Main config for go2rtc on the Mac host
+#
+# IMPORTANT: This is the TEMPLATE (go2rtc.yaml.example).
+# Copy it to go2rtc.yaml, then open http://127.0.0.1:1984 to log into your
+# Xiaomi account. go2rtc will append a `xiaomi:` section with the cloud token
+# to this file automatically — that section is SECRET and is gitignored.
+#
+# DO NOT commit go2rtc.yaml — it contains your Xiaomi cloud token.
+# DO commit this example file (go2rtc.yaml.example).
+
+api:
+  listen: "127.0.0.1:1984"   # bind to loopback only; Docker accesses it via host.docker.internal
+
+rtsp:
+  listen: "127.0.0.1:8554"   # RTSP server for the containers; same host.docker.internal trick

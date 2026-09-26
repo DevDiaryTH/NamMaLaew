@@ -1,0 +1,3 @@
+streams:
+  ec6: "xiaomi://<XIAOMI_USER_ID>:<REGION>@<CAMERA_IP>?did=<DEVICE_DID>&model=chuangmi.camera.068ac1"
+  ec6_2: "xiaomi://<XIAOMI_USER_ID>:<REGION>@<CAMERA_IP>?did=<DEVICE_DID>&model=chuangmi.camera.068ac1&channel=2"

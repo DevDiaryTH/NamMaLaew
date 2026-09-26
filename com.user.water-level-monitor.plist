@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.water-level-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>___PROJECT_DIR___/.venv/bin/python</string>
+        <string>___PROJECT_DIR___/monitor.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>___PROJECT_DIR___</string>
+
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>___PROJECT_DIR___/logs/launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>___PROJECT_DIR___/logs/launchd-error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

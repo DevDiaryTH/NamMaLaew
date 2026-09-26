@@ -1,0 +1,308 @@
+"""Alert policy: decide when to alert, send via Telegram, record in DB.
+
+State keys in runtime_state:
+  last_status            - last non-unknown status
+  consecutive_failures   - int, count of consecutive unknown readings
+  failure_alert_sent     - "1" | "0"
+  last_critical_alert_ts - ISO timestamp of last critical alert (or "")
+  last_heartbeat_date    - YYYY-MM-DD string or ""
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+from wlm import db, settings, siren
+from wlm import telegram as tg
+
+logger = logging.getLogger("wlm.alerts")
+
+
+def _get_state_int(key: str, conn=None) -> int:
+    val = db.get_state(key, default="0", conn=conn)
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _get_state_float(key: str, conn=None) -> float | None:
+    val = db.get_state(key, default="", conn=conn)
+    if not val:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _now_ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _derive_final_status(
+    model_status: str | None,
+    level_index: float | None,
+    per_lens: list[dict] | None = None,
+    conn=None,
+) -> str:
+    """Derive the final status from model output + threshold settings.
+
+    Escalation rules (applied only when model_status is not 'unknown'):
+    - If any lens line_position == 'at_or_above_critical' → at least critical
+    - If any lens line_position == 'at_or_above_warning'  → at least warning
+    """
+    if model_status is None or model_status == "unknown" or level_index is None:
+        return "unknown"
+    level_critical = settings.get_float("level_critical", conn=conn)
+    level_warning = settings.get_float("level_warning", conn=conn)
+    if level_index >= level_critical:
+        status = "critical"
+    elif level_index >= level_warning:
+        status = "warning"
+    else:
+        status = "normal"
+
+    # Escalate from line positions
+    if per_lens:
+        for lens in per_lens:
+            lp = lens.get("line_position")
+            if lp == "at_or_above_critical":
+                return "critical"
+        for lens in per_lens:
+            lp = lens.get("line_position")
+            if lp == "at_or_above_warning" and status == "normal":
+                status = "warning"
+
+    return status
+
+
+def derive_final_status(
+    model_status: str | None,
+    level_index: float | None,
+    per_lens: list[dict] | None = None,
+    conn=None,
+) -> str:
+    """Public wrapper — used by runner and tests."""
+    return _derive_final_status(model_status, level_index, per_lens=per_lens, conn=conn)
+
+
+def _send_alert(
+    kind: str,
+    message: str,
+    photo_path: Path | None,
+    reading_id: int | None,
+    dry_run: bool,
+    conn=None,
+) -> None:
+    """Send a Telegram alert and record it in the DB."""
+    token = settings.get("telegram_bot_token", conn=conn)
+    chat_id = settings.get("telegram_chat_id", conn=conn)
+    telegram_enabled = settings.get_bool("telegram_enabled", conn=conn)
+
+    if dry_run:
+        print(f"[DRY RUN] alert kind={kind}:\n{message}\n" + "-" * 40)
+        return
+
+    if not telegram_enabled or not token or not chat_id:
+        error_msg = "telegram disabled/not configured"
+        logger.info("Skipping alert (%s): %s", kind, error_msg)
+        db.insert_alert(kind, message, delivered=False, error=error_msg,
+                        reading_id=reading_id, conn=conn)
+        return
+
+    if photo_path and photo_path.exists():
+        ok, err = tg.send_photo(token, chat_id, photo_path, message)
+    else:
+        ok, err = tg.send_message(token, chat_id, message)
+
+    db.insert_alert(kind, message, delivered=ok, error=err,
+                    reading_id=reading_id, conn=conn)
+
+
+def _sound_siren(reason: str, reading_id: int | None, dry_run: bool, conn=None) -> None:
+    """Sound the MQTT siren and log it; never raises, silent when the siren is off."""
+    try:
+        if not siren.is_configured(conn=conn):
+            return
+        seconds = settings.get_int("siren_seconds", conn=conn)
+        ok, err = siren.sound(seconds, conn=conn, dry_run=dry_run)
+        if not dry_run:
+            db.insert_alert("siren", f"Siren ON {seconds} s ({reason})", delivered=ok,
+                            error=err, reading_id=reading_id, conn=conn)
+    except Exception as siren_exc:
+        logger.warning("Siren sound error: %s", siren_exc)
+
+
+def process_alerts(
+    final_status: str,
+    result: dict,
+    reading_id: int | None,
+    photo_path: Path | None,
+    dry_run: bool = False,
+    conn=None,
+) -> None:
+    """Apply alert policy, send notifications, update runtime_state.
+
+    unknown does NOT overwrite last_status so that warning→unknown→normal
+    still fires a recovery alert.
+    """
+    ts = _now_ts()
+    now = datetime.now(timezone.utc)
+
+    last_status = db.get_state("last_status", default="", conn=conn) or None
+    consecutive = _get_state_int("consecutive_failures", conn=conn)
+    failure_alert_sent = db.get_state("failure_alert_sent", default="0", conn=conn) == "1"
+    last_critical_ts_str = db.get_state("last_critical_alert_ts", default="", conn=conn) or ""
+
+    desc = result.get("estimated_level_description", "")
+    reason = result.get("reason", "")
+    level_index = result.get("level_index")
+    level_index_str = f"{level_index:.1f}" if level_index is not None else "unknown"
+    now_local = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # ---- critical alert ----
+    if final_status == "critical":
+        critical_repeat = settings.get_int("critical_repeat_minutes", conn=conn)
+        should_alert = True
+        if last_critical_ts_str:
+            try:
+                last_critical_ts = datetime.fromisoformat(last_critical_ts_str)
+                # Make timezone-aware if needed
+                if last_critical_ts.tzinfo is None:
+                    last_critical_ts = last_critical_ts.replace(tzinfo=timezone.utc)
+                elapsed = (now - last_critical_ts).total_seconds() / 60
+                if elapsed < critical_repeat:
+                    should_alert = False
+                    logger.debug(
+                        "Suppressing critical repeat (%.1f min < %d min)",
+                        elapsed, critical_repeat,
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        if should_alert:
+            msg = (
+                f"🚨 น้ำระดับวิกฤต! (CRITICAL)\n"
+                f"level_index: {level_index_str}\n"
+                f"ระดับ: {desc}\n"
+                f"เหตุผล: {reason}\n"
+                f"เวลา: {now_local}"
+            )
+            _send_alert("critical", msg, photo_path, reading_id, dry_run, conn=conn)
+            if not dry_run:
+                db.set_state("last_critical_alert_ts", ts, conn=conn)
+            # ---- siren: critical ----
+            _sound_siren("critical", reading_id, dry_run, conn=conn)
+
+    # ---- warning alert (on transition) ----
+    elif final_status == "warning" and last_status != "warning":
+        if settings.get_bool("alert_on_warning", conn=conn):
+            msg = (
+                f"⚠️ น้ำระดับเตือนภัย! (WARNING)\n"
+                f"level_index: {level_index_str}\n"
+                f"ระดับ: {desc}\n"
+                f"เหตุผล: {reason}\n"
+                f"เวลา: {now_local}"
+            )
+            _send_alert("warning", msg, photo_path, reading_id, dry_run, conn=conn)
+            # ---- siren: warning ----
+            if settings.get_bool("siren_on_warning", conn=conn):
+                _sound_siren("warning", reading_id, dry_run, conn=conn)
+
+    # ---- recovery alert ----
+    elif final_status == "normal" and last_status in ("warning", "critical"):
+        if settings.get_bool("alert_on_recovery", conn=conn):
+            msg = (
+                f"✅ น้ำกลับสู่ระดับปกติ (RECOVERED)\n"
+                f"level_index: {level_index_str}\n"
+                f"ระดับ: {desc}\n"
+                f"เวลา: {now_local}"
+            )
+            _send_alert("recovered", msg, None, reading_id, dry_run, conn=conn)
+        # ---- siren: stop on recovery ----
+        siren_off_at = db.get_state("siren_off_at", default="", conn=conn) or ""
+        if siren_off_at and not dry_run:
+            try:
+                ok, err = siren.stop(conn=conn)
+                db.insert_alert("siren", "Siren OFF", delivered=ok, error=err,
+                                reading_id=reading_id, conn=conn)
+            except Exception as siren_exc:
+                logger.warning("Siren stop error: %s", siren_exc)
+
+    # ---- consecutive failure alert ----
+    if final_status == "unknown":
+        new_consecutive = consecutive + 1
+    else:
+        new_consecutive = 0
+
+    failure_threshold = settings.get_int("failure_threshold", conn=conn)
+    failure_newly_sent = False
+    if new_consecutive >= failure_threshold and not failure_alert_sent:
+        if settings.get_bool("alert_on_failure", conn=conn):
+            msg = (
+                f"📷 กล้อง/การวิเคราะห์ล้มเหลว {new_consecutive} ครั้งติดต่อกัน\n"
+                f"(Camera/analysis failing {new_consecutive} times in a row)\n"
+                f"เวลา: {now_local}"
+            )
+            _send_alert("failure", msg, None, reading_id, dry_run, conn=conn)
+            failure_newly_sent = True
+
+    # ---- update state (skip in dry_run) ----
+    if dry_run:
+        return
+
+    # unknown does NOT overwrite last_status
+    if final_status != "unknown":
+        db.set_state("last_status", final_status, conn=conn)
+
+    db.set_state("consecutive_failures", str(new_consecutive), conn=conn)
+    if new_consecutive == 0:
+        db.set_state("failure_alert_sent", "0", conn=conn)
+    elif failure_newly_sent:
+        db.set_state("failure_alert_sent", "1", conn=conn)
+
+
+def maybe_send_heartbeat(
+    dry_run: bool = False,
+    conn=None,
+) -> None:
+    """Send a once-per-day heartbeat message at heartbeat_hour (local time)."""
+    hour_str = settings.get("heartbeat_hour", conn=conn).strip()
+    if not hour_str:
+        return
+    try:
+        heartbeat_hour = int(hour_str)
+    except ValueError:
+        logger.warning("heartbeat_hour is not a valid integer: %r", hour_str)
+        return
+
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    last_hb = db.get_state("last_heartbeat_date", default="", conn=conn) or ""
+    if now.hour != heartbeat_hour or last_hb == today:
+        return
+
+    msg = (
+        f"💧 NamMaLaew / น้ำมาแล้ว! — ระบบทำงานปกติ\n"
+        f"เวลา: {now.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+
+    if dry_run:
+        print(f"[DRY RUN] heartbeat: {msg}")
+        return
+
+    token = settings.get("telegram_bot_token", conn=conn)
+    chat_id = settings.get("telegram_chat_id", conn=conn)
+    telegram_enabled = settings.get_bool("telegram_enabled", conn=conn)
+
+    if telegram_enabled and token and chat_id:
+        ok, err = tg.send_message(token, chat_id, msg)
+        db.insert_alert("heartbeat", msg, delivered=ok, error=err, conn=conn)
+    else:
+        db.insert_alert("heartbeat", msg, delivered=False,
+                        error="telegram disabled/not configured", conn=conn)
+
+    db.set_state("last_heartbeat_date", today, conn=conn)

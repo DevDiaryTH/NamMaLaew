@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.go2rtc</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>___PROJECT_DIR___/go2rtc/go2rtc</string>
+        <string>-config</string>
+        <string>___PROJECT_DIR___/go2rtc/go2rtc.yaml</string>
+        <string>-config</string>
+        <string>___PROJECT_DIR___/go2rtc/streams.yaml</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>___PROJECT_DIR___/go2rtc</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>___PROJECT_DIR___/logs/go2rtc.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>___PROJECT_DIR___/logs/go2rtc.log</string>
+</dict>
+</plist>

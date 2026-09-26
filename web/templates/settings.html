@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}SETTINGS — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>SETTINGS / การตั้งค่า</h2>
+</div>
+
+{% if flash %}
+  <div class="alert alert-success">{{ flash }}</div>
+{% endif %}
+{% if flash_error %}
+  <div class="alert alert-error">{{ flash_error }}</div>
+{% endif %}
+
+<form method="POST" action="/settings" id="settings-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+  {% set groups = [
+    ('Telegram', ['telegram_enabled','telegram_bot_token','telegram_chat_id']),
+    ('Alert Policy', ['alert_on_warning','alert_on_recovery','alert_on_failure','failure_threshold','critical_repeat_minutes','heartbeat_hour']),
+    ('Monitor', ['capture_interval_minutes','level_warning','level_critical','claude_model','reference_description']),
+    ('Location', ['latitude','longitude']),
+    ('Siren (MQTT)', ['siren_enabled','mqtt_host','mqtt_port','mqtt_username','mqtt_password','siren_topic','siren_seconds','siren_on_warning']),
+  ] %}
+
+  {% for group_name, keys in groups %}
+  <div class="poster-block settings-group">
+    <h3>◆ {{ group_name | upper }}</h3>
+    {% for key in keys %}
+      {% set spec = specs | selectattr('key', 'equalto', key) | first %}
+      {% if spec %}
+        {% set val = current[spec.key] %}
+        {% set src = sources[spec.key] %}
+        <div class="settings-row">
+          <div class="settings-label-area">
+            <label for="s_{{ spec.key }}">{{ spec.label }}</label>
+            <span class="settings-source src-{{ src }}">[{{ src | upper }}]</span>
+            {% if spec.env %}
+              <span class="settings-env text-muted">env: {{ spec.env }}</span>
+            {% endif %}
+          </div>
+          <div class="settings-input-area">
+            {% if spec.kind == 'bool' %}
+              <label class="toggle">
+                <input type="checkbox" id="s_{{ spec.key }}" name="{{ spec.key }}" value="1" {% if val in ('1','true','yes','on') %}checked{% endif %} />
+                <span class="toggle-slider"></span>
+              </label>
+            {% elif spec.kind == 'secret' %}
+              <input
+                type="password"
+                id="s_{{ spec.key }}"
+                name="{{ spec.key }}"
+                class="form-control"
+                placeholder="{% if val %}••••••••{{ val[-4:] }}{% else %}NOT SET{% endif %}"
+                autocomplete="off"
+              />
+              <label class="clear-check">
+                <input type="checkbox" name="{{ spec.key }}_clear" value="1" />
+                CLEAR (REMOVE SAVED VALUE)
+              </label>
+              <div class="settings-hint">LEAVE BLANK TO KEEP THE EXISTING VALUE.</div>
+            {% elif spec.kind == 'text' %}
+              <textarea
+                id="s_{{ spec.key }}"
+                name="{{ spec.key }}"
+                class="form-control"
+                rows="4"
+              >{{ val }}</textarea>
+            {% elif spec.kind in ('int', 'float') %}
+              <input
+                type="number"
+                id="s_{{ spec.key }}"
+                name="{{ spec.key }}"
+                class="form-control"
+                value="{{ val }}"
+                step="{% if spec.kind == 'float' %}0.1{% else %}1{% endif %}"
+              />
+            {% else %}
+              <input
+                type="text"
+                id="s_{{ spec.key }}"
+                name="{{ spec.key }}"
+                class="form-control"
+                value="{{ val }}"
+              />
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">SAVE SETTINGS</button>
+    <span class="save-stamp" id="settings-saved" style="display:none;">SAVED ✱</span>
+  </div>
+</form>
+
+<!-- Test Telegram -->
+<div class="poster-block">
+  <h3>◆ TEST TELEGRAM</h3>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">SENDS A TEST MESSAGE USING THE CURRENTLY SAVED SETTINGS.</p>
+  <form method="POST" action="/settings/test-telegram">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">SEND TEST MESSAGE</button>
+  </form>
+</div>
+
+<!-- Test Siren -->
+<div class="poster-block">
+  <h3>◆ TEST SIREN</h3>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">SOUNDS THE SIREN FOR 1 SECOND USING THE CURRENTLY SAVED MQTT SETTINGS.</p>
+  <form method="POST" action="/settings/test-siren">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">TEST SIREN (1 S)</button>
+  </form>
+  <form method="POST" action="/siren/stop" style="margin-top:var(--space-sm);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ STOP SIREN</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}OVERVIEW — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+{% set s = summary %}
+{% set status = s.status if s else 'unknown' %}
+
+<!-- Hero poster block: Stat-Led -->
+<div class="hero-poster status-{{ status }}">
+  <div class="hero-layout">
+    <div class="hero-layout-stat">
+      <p class="hero-stat" aria-label="Water level index: {{ '%.1f'|format(s.level_index) if s and s.level_index is not none else 'unknown' }}">
+        {{ "%.1f"|format(s.level_index) if s and s.level_index is not none else "—" }}
+      </p>
+    </div>
+    <div class="hero-layout-meta">
+      <p class="hero-status-word">
+        {% if status == 'normal' %}NORMAL / ปกติ
+        {% elif status == 'warning' %}WARNING / เตือนภัย
+        {% elif status == 'critical' %}CRITICAL / วิกฤต
+        {% else %}UNKNOWN / ไม่ทราบ
+        {% endif %}
+      </p>
+      <div class="hero-meta">
+        {% if s and s.confidence %}
+          <span>{{ "%.0f"|format(s.confidence * 100) }}% CONFIDENCE</span> &nbsp;
+        {% endif %}
+        {% if s and s.ts %}
+          <span data-ts="{{ s.ts }}">{{ s.ts }}</span>
+        {% endif %}
+        {% if stale %}
+          &nbsp;<span class="status-badge badge-stale">⚠ STALE</span>
+        {% endif %}
+      </div>
+      {% if s and s.reason %}
+        <div style="margin-top:var(--space-xs);font-size:var(--text-sm);">{{ s.reason }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Ornament divider -->
+<p class="ornament-divider" aria-hidden="true">✱ ✱ ✱ ✱</p>
+
+<!-- Run Now form (header area) -->
+<div style="margin-bottom:var(--space-md);display:flex;align-items:center;gap:var(--space-sm);flex-wrap:wrap;">
+  <form method="POST" action="/run-now" id="run-now-form" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-primary">▶ RUN NOW</button>
+  </form>
+  {% if siren_host %}
+  <form method="POST" action="/siren/stop" id="siren-stop-form" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ STOP SIREN</button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Bento grid of tiles -->
+<div class="bento-grid">
+
+  <!-- Rise rate + ETA tile -->
+  <div class="bento-tile bento-tile-paper2">
+    <h3>◆ RISE RATE / ETA</h3>
+    {% if slope is not none %}
+      <div class="metric-row">
+        <span class="metric-label">RATE:</span>
+        <span class="metric-value {% if slope > 0 %}text-warning{% elif slope < 0 %}text-normal{% endif %}">
+          {{ "%.2f"|format(slope) }} / hr
+        </span>
+      </div>
+      {% if slope_r2 is not none %}
+        <div class="metric-row">
+          <span class="metric-label">R²:</span>
+          <span class="metric-value" style="font-size:var(--text-sm);color:var(--color-muted)">{{ "%.2f"|format(slope_r2) }}</span>
+        </div>
+      {% endif %}
+      {% if eta %}
+        <div class="metric-row">
+          <span class="metric-label">ETA CRITICAL:</span>
+          <span class="metric-value text-critical">{{ eta.label }}</span>
+        </div>
+        {% if eta.eta_dt %}
+          <div class="metric-row">
+            <span class="metric-label">AT:</span>
+            <span class="metric-value" data-ts="{{ eta.eta_dt.isoformat() if eta.eta_dt else '' }}">—</span>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="metric-row">
+          <span class="metric-label">ETA:</span>
+          <span class="metric-value text-muted">NOT RISING</span>
+        </div>
+      {% endif %}
+    {% elif rise_rate_pts is defined and rise_rate_pts >= 3 %}
+      <p class="text-muted" style="font-size:var(--text-sm);">NOT RISING / น้ำไม่ขึ้น</p>
+    {% else %}
+      <p class="text-muted" style="font-size:var(--text-sm);">NOT ENOUGH DATA (NEED ≥3 READINGS).</p>
+    {% endif %}
+  </div>
+
+  <!-- System health tile -->
+  <div class="bento-tile bento-tile-paper2">
+    <h3>◆ SYSTEM HEALTH (24H)</h3>
+    {% if health %}
+      <div class="metric-row"><span class="metric-label">READINGS:</span><span class="metric-value">{{ health.total_readings_24h }}</span></div>
+      <div class="metric-row">
+        <span class="metric-label">ANALYSIS:</span>
+        <span class="metric-value {% if health.analysis_success_rate >= 0.9 %}text-normal{% elif health.analysis_success_rate >= 0.7 %}text-warning{% else %}text-critical{% endif %}">
+          {{ "%.0f"|format(health.analysis_success_rate * 100) }}%
+        </span>
+      </div>
+      {% for label, rate in health.capture_rates.items() %}
+        <div class="metric-row">
+          <span class="metric-label">{{ label }}:</span>
+          <span class="metric-value">{{ "%.0f"|format(rate * 100) }}%</span>
+        </div>
+      {% endfor %}
+      {% if health.avg_confidence %}<div class="metric-row"><span class="metric-label">AVG CONF:</span><span class="metric-value">{{ "%.0f"|format(health.avg_confidence * 100) }}%</span></div>{% endif %}
+    {% else %}
+      <p class="text-muted" style="font-size:var(--text-sm);">NO HEALTH DATA YET.</p>
+    {% endif %}
+  </div>
+
+  <!-- Cost tile -->
+  <div class="bento-tile bento-tile-paper3">
+    <h3>◆ COST / ค่าใช้จ่าย</h3>
+    {% if costs and costs.daily %}
+      <div class="metric-row"><span class="metric-label">AVG DAILY:</span><span class="metric-value">${{ "%.4f"|format(costs.avg_daily_cost) }}</span></div>
+      <div class="metric-row"><span class="metric-label">PROJ. 30D:</span><span class="metric-value">${{ "%.2f"|format(costs.projected_30d) }}</span></div>
+      <div class="cost-table">
+        {% for day in costs.daily[-7:] %}
+          <div class="cost-row">
+            <span class="cost-day">{{ day.day }}</span>
+            <span class="cost-val">${{ "%.4f"|format(day.cost) }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted" style="font-size:var(--text-sm);">NO COST DATA YET.</p>
+    {% endif %}
+  </div>
+
+  <!-- Level chart tile (wide) -->
+  <div class="bento-tile bento-tile-paper3 bento-tile-wide">
+    <div class="card-header-row">
+      <h3>◆ WATER LEVEL / ระดับน้ำ</h3>
+      <div class="range-btns">
+        <button class="range-btn" data-range="6h">6H</button>
+        <button class="range-btn active" data-range="24h">24H</button>
+        <button class="range-btn" data-range="3d">3D</button>
+        <button class="range-btn" data-range="7d">7D</button>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="levelChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Image quality chart tile (wide) -->
+  <div class="bento-tile bento-tile-paper2 bento-tile-wide">
+    <div class="card-header-row">
+      <h3>◆ IMAGE QUALITY / คุณภาพภาพ</h3>
+      <div class="range-btns" id="img-range-btns">
+        <button class="img-range-btn" data-range="6h">6H</button>
+        <button class="img-range-btn active" data-range="24h">24H</button>
+        <button class="img-range-btn" data-range="3d">3D</button>
+        <button class="img-range-btn" data-range="7d">7D</button>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="imgQualityChart"></canvas>
+    </div>
+    <div id="img-quality-latest" style="margin-top:var(--space-sm);font-size:var(--text-sm);color:var(--color-muted);font-variant-numeric:tabular-nums;"></div>
+  </div>
+
+  <!-- Per-lens tiles -->
+  {% if s and s.lenses %}
+    {% for lr in s.lenses %}
+    <div class="bento-tile bento-tile-paper3">
+      <h3>◆ {{ lr.label | upper }}</h3>
+      {% if lr.snapshot_path %}
+        <a href="/snapshots/{{ lr.snapshot_path }}" target="_blank" class="thumb-link">
+          <img src="/snapshots/{{ lr.snapshot_path }}" class="thumb" alt="{{ lr.label }}"
+               onerror="this.parentElement.innerHTML='<div class=\'catalogue-card-thumb-placeholder halftone\' style=\'width:100%;height:80px;\'></div>'" />
+        </a>
+      {% else %}
+        <div class="catalogue-card-thumb-placeholder halftone" style="width:100%;height:80px;" aria-hidden="true"></div>
+      {% endif %}
+      {% if lr.line_position %}
+        <div style="margin-top:var(--space-2xs);">
+          {% if lr.line_position == 'below_warning' %}
+            <span class="badge-line-pos badge-lp-below">BELOW WARNING</span>
+          {% elif lr.line_position == 'at_or_above_warning' %}
+            <span class="badge-line-pos badge-lp-warning">AT/ABOVE WARNING</span>
+          {% elif lr.line_position == 'at_or_above_critical' %}
+            <span class="badge-line-pos badge-lp-critical">AT/ABOVE CRITICAL</span>
+          {% elif lr.line_position == 'no_lines' %}
+            <span class="badge-line-pos badge-lp-none">LINES NOT SET</span>
+          {% elif lr.line_position == 'not_visible' %}
+            <span class="badge-line-pos badge-lp-none">CAN'T JUDGE</span>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if lr.observation %}
+        <div class="lens-obs">{{ lr.observation }}</div>
+      {% endif %}
+      {% if lr.water_coverage_pct is not none %}
+        <div class="lens-stat">COVERAGE: {{ "%.0f"|format(lr.water_coverage_pct) }}%</div>
+      {% endif %}
+      {% if lr.is_night %}
+        <span class="badge-night">🌙 NIGHT</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Composite thumbnail tile -->
+  {% if s and s.composite_path %}
+  <div class="bento-tile bento-tile-paper2">
+    <h3>◆ COMPOSITE IMAGE</h3>
+    <a href="/snapshots/{{ s.composite_path }}" target="_blank" class="thumb-link">
+      <img src="/snapshots/{{ s.composite_path }}" style="max-width:100%;height:auto;border:var(--border-card);"
+           alt="Latest composite"
+           onerror="this.parentElement.innerHTML='<div class=\'halftone\' style=\'width:100%;height:120px;border:var(--border-card);\'></div>'" />
+    </a>
+  </div>
+  {% endif %}
+
+</div><!-- /bento-grid -->
+
+{% if not s %}
+<div class="card" style="text-align:center;padding:var(--space-2xl);">
+  <p class="text-muted">NO READINGS YET.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Vendor: Chart.js 4.4.4 + chartjs-adapter-date-fns 3.0.0
+</script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script>
+(function() {
+  // Image quality chart — reads colours from CSS custom properties
+  let imgChart = null;
+  let currentImgRange = '24h';
+
+  function getCSSVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function getLensColors() {
+    // Use chart tokens — not accent/accent-2 (status-ambiguous in Cold Snap)
+    return [
+      getCSSVar('--color-chart-lens-a'),
+      getCSSVar('--color-chart-lens-b'),
+      getCSSVar('--color-ink-2'),
+      getCSSVar('--color-muted'),
+      getCSSVar('--color-ink'),
+    ];
+  }
+
+  async function loadImgSeries(range) {
+    const resp = await fetch('/api/image-series?range=' + range);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const lenses = data.lenses || [];
+    const series = data.series || {};
+    const latest = data.latest || {};
+
+    const LENS_COLORS = getLensColors();
+    const inkColor = getCSSVar('--color-ink');
+    const mutedColor = getCSSVar('--color-muted');
+    const bodyFont = getCSSVar('--font-body').split(',')[0].trim().replace(/["']/g, '');
+
+    const datasets = [];
+    lenses.forEach((label, i) => {
+      const color = LENS_COLORS[i % LENS_COLORS.length];
+      const pts = (series[label] || []);
+
+      datasets.push({
+        label: label + ' brightness',
+        data: pts.map(p => ({ x: p.ts, y: p.brightness })),
+        borderColor: color,
+        backgroundColor: color + '55',
+        yAxisID: 'yBright',
+        tension: 0.2,
+        pointRadius: pts.length > 200 ? 0 : 2,
+        borderWidth: 1.5,
+        spanGaps: true,
+      });
+
+      datasets.push({
+        label: label + ' sharpness',
+        data: pts.map(p => ({ x: p.ts, y: p.sharpness })),
+        borderColor: color,
+        borderDash: [5, 3],
+        backgroundColor: 'transparent',
+        yAxisID: 'ySharp',
+        tension: 0.2,
+        pointRadius: 0,
+        borderWidth: 1,
+        spanGaps: true,
+      });
+    });
+
+    const ctx = document.getElementById('imgQualityChart');
+    if (!ctx) return;
+
+    if (imgChart) imgChart.destroy();
+    imgChart = new Chart(ctx, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, labels: { color: mutedColor, boxWidth: 10, font: { family: bodyFont } } },
+          tooltip: { callbacks: {
+            label: (item) => item.dataset.label + ': ' + (item.parsed.y != null ? item.parsed.y.toFixed(1) : '—'),
+          }},
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { tooltipFormat: 'MMM d HH:mm', displayFormats: { hour: 'HH:mm', day: 'MMM d' } },
+            ticks: { color: mutedColor, maxTicksLimit: 8, font: { family: bodyFont } },
+            grid: { color: getCSSVar('--color-chart-grid') },
+          },
+          yBright: {
+            type: 'linear', position: 'left',
+            title: { display: true, text: 'Brightness (0-255)', color: mutedColor, font: { size: 11, family: bodyFont } },
+            min: 0, max: 255,
+            ticks: { color: mutedColor, font: { family: bodyFont } },
+            grid: { color: getCSSVar('--color-chart-grid') },
+          },
+          ySharp: {
+            type: 'linear', position: 'right',
+            title: { display: true, text: 'Sharpness', color: mutedColor, font: { size: 11, family: bodyFont } },
+            min: 0,
+            ticks: { color: mutedColor, font: { family: bodyFont } },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+
+    const latestDiv = document.getElementById('img-quality-latest');
+    if (latestDiv) {
+      const parts = lenses.map(label => {
+        const l = latest[label];
+        if (!l) return `<span>${label}: —</span>`;
+        const night = l.is_night ? ' 🌙' : '';
+        return `<span style="margin-right:var(--space-md)"><strong>${label}</strong>: brightness=${l.brightness != null ? l.brightness.toFixed(0) : '—'}, sharpness=${l.sharpness != null ? l.sharpness.toFixed(0) : '—'}${night}</span>`;
+      });
+      latestDiv.innerHTML = 'LATEST: ' + parts.join(' ');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadImgSeries(currentImgRange);
+    document.querySelectorAll('.img-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.img-range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentImgRange = btn.dataset.range;
+        loadImgSeries(currentImgRange);
+      });
+    });
+
+    // Rebuild on colour scheme change
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      loadImgSeries(currentImgRange);
+    });
+  });
+})();
+</script>
+{% endblock %}

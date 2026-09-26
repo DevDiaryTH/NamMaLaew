@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}LINE EDITOR — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>LINE EDITOR / เส้นแจ้งเตือน</h2>
+</div>
+
+<div class="lines-help">
+  <strong>HOW TO DRAW / วิธีวาด:</strong>
+  วาดเส้นตามระดับที่ต้องการแจ้งเตือน เช่น ขอบฟุตบาท ท้องประตูรั้ว พื้นโรงจอดรถ<br>
+  Draw the line along the level where you want the alert, e.g. along the kerb, the gate bottom, or the carport floor edge.
+  At least 2 points per line. Warning and critical are independent.
+  Click a mode button, then click/tap on the image to add points. Drag an existing point to move it.
+</div>
+
+{% if not labels %}
+  <div class="poster-block"><p class="text-muted">NO LENSES FOUND YET — RUN A CAPTURE FIRST.</p></div>
+{% else %}
+
+{% for label in labels %}
+<div class="poster-block lens-editor" data-label="{{ label }}">
+  <h3>{{ label | upper }}</h3>
+
+  {% set snap = snapshots.get(label) %}
+  {% if snap %}
+  <div class="canvas-wrapper" id="wrapper-{{ label }}">
+    <img class="snap-bg" src="/snapshots/{{ snap }}" id="img-{{ label }}"
+         alt="{{ label }} snapshot" crossorigin="anonymous"
+         onerror="this.parentElement.innerHTML='<div class=\'no-snap-msg\'>SNAPSHOT COULD NOT BE LOADED.</div>'" />
+    <canvas id="canvas-{{ label }}"></canvas>
+  </div>
+  {% else %}
+  <div class="no-snap-msg" id="no-snap-{{ label }}">
+    NO SNAPSHOT AVAILABLE FOR <strong>{{ label | upper }}</strong> YET — RUN A CAPTURE FIRST.
+  </div>
+  {% endif %}
+
+  <div class="editor-controls" id="controls-{{ label }}" {% if not snap %}style="display:none"{% endif %}>
+    <button class="mode-btn" id="btn-warning-{{ label }}" onclick="setMode('{{ label }}','warning')">⚠ WARNING LINE</button>
+    <button class="mode-btn" id="btn-critical-{{ label }}" onclick="setMode('{{ label }}','critical')">◆ CRITICAL LINE</button>
+    <span class="mode-sep"></span>
+    <button class="btn btn-secondary btn-xs" onclick="undoPoint('{{ label }}')">UNDO POINT</button>
+    <button class="btn btn-secondary btn-xs" onclick="clearLine('{{ label }}')">◆ CLEAR ACTIVE LINE</button>
+    <button class="btn btn-secondary btn-xs" onclick="clearLens('{{ label }}')">◆ CLEAR LENS</button>
+  </div>
+</div>
+{% endfor %}
+
+<div class="save-row">
+  <button class="btn btn-primary" id="save-btn" onclick="saveLines()">SAVE LINES</button>
+  <span class="save-status" id="save-status"></span>
+  {% if last_saved %}
+    <span class="last-saved">LAST SAVED: <span data-ts="{{ last_saved }}">{{ last_saved }}</span></span>
+  {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================
+// Alert-line editor
+// ============================================================
+const CSRF_TOKEN = {{ csrf_token | tojson }};
+
+// State: { [label]: { warning: [[x,y],...], critical: [[x,y],...], mode: 'warning'|'critical', drag: null } }
+const state = {};
+
+// Pre-load existing lines from server
+const existingLines = {{ current_lines | tojson }};
+
+function getLineColor(kind) {
+  const style = getComputedStyle(document.documentElement);
+  if (kind === 'warning') return style.getPropertyValue('--color-status-warning').trim();
+  if (kind === 'critical') return style.getPropertyValue('--color-status-critical').trim();
+  return style.getPropertyValue('--color-ink').trim();
+}
+
+function initLens(label) {
+  const existing = existingLines[label] || {};
+  state[label] = {
+    warning: (existing.warning || []).map(p => [...p]),
+    critical: (existing.critical || []).map(p => [...p]),
+    mode: 'warning',
+    drag: null,
+  };
+
+  const canvas = document.getElementById('canvas-' + label);
+  if (!canvas) return;
+  const img = document.getElementById('img-' + label);
+
+  function resize() {
+    canvas.width = img.offsetWidth;
+    canvas.height = img.offsetHeight;
+    draw(label);
+  }
+
+  if (img.complete) {
+    resize();
+  } else {
+    img.addEventListener('load', resize);
+  }
+
+  const ro = new ResizeObserver(() => {
+    canvas.width = img.offsetWidth;
+    canvas.height = img.offsetHeight;
+    draw(label);
+  });
+  ro.observe(img);
+
+  canvas.addEventListener('pointerdown', e => onPointerDown(e, label), { passive: false });
+  canvas.addEventListener('pointermove', e => onPointerMove(e, label), { passive: false });
+  canvas.addEventListener('pointerup', e => onPointerUp(e, label), { passive: false });
+  canvas.addEventListener('pointercancel', e => { state[label].drag = null; }, { passive: false });
+  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+  setMode(label, 'warning');
+}
+
+function canvasPos(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / rect.width,
+    y: (e.clientY - rect.top) / rect.height,
+  };
+}
+
+const DRAG_RADIUS = 12;
+
+function findNearPoint(label, nx, ny, canvas) {
+  const w = canvas.width, h = canvas.height;
+  for (const kind of ['warning', 'critical']) {
+    const pts = state[label][kind];
+    for (let i = 0; i < pts.length; i++) {
+      const dx = (pts[i][0] - nx) * w;
+      const dy = (pts[i][1] - ny) * h;
+      if (Math.sqrt(dx*dx + dy*dy) < DRAG_RADIUS) {
+        return { kind, idx: i };
+      }
+    }
+  }
+  return null;
+}
+
+function onPointerDown(e, label) {
+  e.preventDefault();
+  const canvas = document.getElementById('canvas-' + label);
+  const pos = canvasPos(e, canvas);
+  const near = findNearPoint(label, pos.x, pos.y, canvas);
+  if (near) {
+    state[label].drag = near;
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
+  const mode = state[label].mode;
+  state[label][mode].push([round4(pos.x), round4(pos.y)]);
+  draw(label);
+}
+
+function onPointerMove(e, label) {
+  e.preventDefault();
+  const s = state[label];
+  if (!s.drag) return;
+  const canvas = document.getElementById('canvas-' + label);
+  const pos = canvasPos(e, canvas);
+  s[s.drag.kind][s.drag.idx] = [round4(pos.x), round4(pos.y)];
+  draw(label);
+}
+
+function onPointerUp(e, label) {
+  e.preventDefault();
+  state[label].drag = null;
+}
+
+function round4(v) { return Math.round(v * 10000) / 10000; }
+
+function draw(label) {
+  const canvas = document.getElementById('canvas-' + label);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const w = canvas.width, h = canvas.height;
+
+  for (const kind of ['warning', 'critical']) {
+    const pts = state[label][kind];
+    if (pts.length === 0) continue;
+    const color = getLineColor(kind);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+      const px = p[0] * w, py = p[1] * h;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const fp = pts[0];
+    ctx.fillStyle = color;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(kind.toUpperCase(), fp[0] * w + 4, fp[1] * h - 4);
+
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(p[0] * w, p[1] * h, 5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-paper').trim();
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function setMode(label, mode) {
+  state[label].mode = mode;
+  const wBtn = document.getElementById('btn-warning-' + label);
+  const cBtn = document.getElementById('btn-critical-' + label);
+  wBtn.className = 'mode-btn' + (mode === 'warning' ? ' active-warning' : '');
+  cBtn.className = 'mode-btn' + (mode === 'critical' ? ' active-critical' : '');
+}
+
+function undoPoint(label) {
+  const mode = state[label].mode;
+  state[label][mode].pop();
+  draw(label);
+}
+
+function clearLine(label) {
+  const mode = state[label].mode;
+  state[label][mode] = [];
+  draw(label);
+}
+
+function clearLens(label) {
+  state[label].warning = [];
+  state[label].critical = [];
+  draw(label);
+}
+
+async function saveLines() {
+  const btn = document.getElementById('save-btn');
+  const status = document.getElementById('save-status');
+  btn.disabled = true;
+  status.className = 'save-status';
+  status.textContent = 'SAVING…';
+
+  const payload = {};
+  for (const label of Object.keys(state)) {
+    const s = state[label];
+    const entry = {};
+    if (s.warning.length >= 2) entry.warning = s.warning;
+    if (s.critical.length >= 2) entry.critical = s.critical;
+    if (Object.keys(entry).length > 0) {
+      payload[label] = entry;
+    }
+  }
+
+  try {
+    const resp = await fetch('/api/lines', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (resp.ok) {
+      status.className = 'save-status ok';
+      status.textContent = 'SAVED ✱';
+      setTimeout(() => { status.textContent = ''; }, 4000);
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      status.className = 'save-status err';
+      status.textContent = 'ERROR: ' + (data.detail || resp.status);
+    }
+  } catch (err) {
+    status.className = 'save-status err';
+    status.textContent = 'NETWORK ERROR: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const labels = {{ labels | tojson }};
+  for (const label of labels) {
+    initLens(label);
+  }
+});
+</script>
+{% endblock %}

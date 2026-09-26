@@ -1,0 +1,49 @@
+services:
+  monitor:
+    build: .
+    command: python -m wlm.runner --loop
+    env_file:
+      - path: .env
+        required: false
+    # CLAUDE_CODE_OAUTH_TOKEN must be set in .env (run `claude setup-token` on your Mac).
+    # Do not put the token value directly in this file.
+    environment:
+      WLM_DB: /app/data/wlm.db
+      WLM_SNAPSHOT_DIR: /app/snapshots
+      TZ: Asia/Bangkok
+      CAM_STREAMS: ${CAM_STREAMS:-street=rtsp://host.docker.internal:8554/ec6_2,carport=rtsp://host.docker.internal:8554/ec6}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./snapshots:/app/snapshots
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    command: uvicorn web.app:app --host 0.0.0.0 --port 8080
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      WLM_DB: /app/data/wlm.db
+      WLM_SNAPSHOT_DIR: /app/snapshots
+      TZ: Asia/Bangkok
+      CAM_STREAMS: ${CAM_STREAMS:-street=rtsp://host.docker.internal:8554/ec6_2,carport=rtsp://host.docker.internal:8554/ec6}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./snapshots:/app/snapshots
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}READING #{{ reading.id }} — NAMMALAEW / น้ำมาแล้ว!{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="/timeline" class="btn btn-secondary btn-sm">← TIMELINE</a>
+  <h2>READING #{{ reading.id }}</h2>
+</div>
+
+<div class="poster-block">
+  <div class="detail-grid">
+    <div class="detail-section">
+      <h3>◆ OVERVIEW</h3>
+      <div class="metric-row"><span class="metric-label">TIME:</span><span data-ts="{{ reading.ts }}">{{ reading.ts }}</span></div>
+      <div class="metric-row">
+        <span class="metric-label">STATUS:</span>
+        <span class="status-sticker status-{{ reading.status }}">
+          {% if reading.status == 'normal' %}NORMAL / ปกติ
+          {% elif reading.status == 'warning' %}WARNING / เตือน
+          {% elif reading.status == 'critical' %}CRITICAL / วิกฤต
+          {% else %}UNKNOWN / ไม่ทราบ{% endif %}
+        </span>
+      </div>
+      <div class="metric-row"><span class="metric-label">LEVEL INDEX:</span><span class="metric-value" style="font-variant-numeric:tabular-nums">{{ "%.1f"|format(reading.level_index) if reading.level_index is not none else "—" }}</span></div>
+      <div class="metric-row"><span class="metric-label">CONFIDENCE:</span><span class="metric-value">{{ "%.0f"|format(reading.confidence * 100) if reading.confidence is not none else "—" }}%</span></div>
+      {% if reading.description %}
+        <div class="metric-row"><span class="metric-label">DESCRIPTION:</span><span>{{ reading.description }}</span></div>
+      {% endif %}
+      {% if reading.reason %}
+        <div class="metric-row"><span class="metric-label">REASON:</span><span>{{ reading.reason }}</span></div>
+      {% endif %}
+      {% if reading.distance_to_critical %}
+        <div class="metric-row"><span class="metric-label">DIST. CRITICAL:</span><span>{{ reading.distance_to_critical }}</span></div>
+      {% endif %}
+    </div>
+
+    <div class="detail-section">
+      <h3>◆ PERFORMANCE</h3>
+      <div class="metric-row"><span class="metric-label">MODEL:</span><span>{{ reading.model or "—" }}</span></div>
+      <div class="metric-row"><span class="metric-label">INPUT TOKENS:</span><span class="metric-value">{{ reading.input_tokens or "—" }}</span></div>
+      <div class="metric-row"><span class="metric-label">OUTPUT TOKENS:</span><span class="metric-value">{{ reading.output_tokens or "—" }}</span></div>
+      <div class="metric-row"><span class="metric-label">COST:</span><span class="metric-value">${{ "%.6f"|format(reading.cost_usd) if reading.cost_usd is not none else "—" }}</span></div>
+      <div class="metric-row"><span class="metric-label">CAPTURE:</span><span class="metric-value">{{ reading.capture_ms or "—" }}ms</span></div>
+      <div class="metric-row"><span class="metric-label">ANALYSIS:</span><span class="metric-value">{{ reading.analysis_ms or "—" }}ms</span></div>
+      {% if reading.error %}
+        <div class="metric-row"><span class="metric-label">ERROR:</span><span class="text-critical">{{ reading.error }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if reading.composite_path %}
+  <div style="margin-top:var(--space-lg);">
+    <h3>◆ COMPOSITE IMAGE</h3>
+    <a href="/snapshots/{{ reading.composite_path }}" target="_blank">
+      <img src="/snapshots/{{ reading.composite_path }}" class="detail-img" alt="Composite"
+           onerror="this.replaceWith(document.createTextNode('[IMAGE NOT FOUND]'))" />
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% if reading.lenses %}
+<div class="poster-block">
+  <h3>◆ PER-LENS DATA</h3>
+  <div class="lens-detail-grid">
+    {% for lr in reading.lenses %}
+    <div class="lens-detail-card">
+      <h4>{{ lr.label | upper }}</h4>
+      {% if lr.snapshot_path %}
+        <a href="/snapshots/{{ lr.snapshot_path }}" target="_blank">
+          <img src="/snapshots/{{ lr.snapshot_path }}" class="detail-img" alt="{{ lr.label }}"
+               onerror="this.replaceWith(document.createTextNode('[IMAGE NOT FOUND]'))" />
+        </a>
+      {% else %}
+        <div class="img-placeholder halftone" style="height:80px;" aria-hidden="true"></div>
+        <div class="img-placeholder" style="padding:var(--space-sm);font-size:var(--text-xs);">NO IMAGE</div>
+      {% endif %}
+      <div class="metric-row"><span class="metric-label">CAPTURED:</span><span>{{ "YES" if lr.ok else "NO" }}</span></div>
+      {% if lr.observation %}<div class="metric-row"><span class="metric-label">OBSERVATION:</span><span>{{ lr.observation }}</span></div>{% endif %}
+      {% if lr.water_coverage_pct is not none %}<div class="metric-row"><span class="metric-label">COVERAGE:</span><span>{{ "%.0f"|format(lr.water_coverage_pct) }}%</span></div>{% endif %}
+      {% if lr.brightness is not none %}<div class="metric-row"><span class="metric-label">BRIGHTNESS:</span><span>{{ "%.1f"|format(lr.brightness) }}</span></div>{% endif %}
+      {% if lr.sharpness is not none %}<div class="metric-row"><span class="metric-label">SHARPNESS:</span><span>{{ "%.1f"|format(lr.sharpness) }}</span></div>{% endif %}
+      {% if lr.is_night %}<div class="metric-row"><span>🌙 NIGHT MODE</span></div>{% endif %}
+      {% if lr.line_position %}
+      <div class="metric-row">
+        <span class="metric-label">LINE POS:</span>
+        {% if lr.line_position == 'below_warning' %}
+          <span class="badge-line-pos badge-lp-below">BELOW WARNING</span>
+        {% elif lr.line_position == 'at_or_above_warning' %}
+          <span class="badge-line-pos badge-lp-warning">AT/ABOVE WARNING</span>
+        {% elif lr.line_position == 'at_or_above_critical' %}
+          <span class="badge-line-pos badge-lp-critical">AT/ABOVE CRITICAL</span>
+        {% elif lr.line_position == 'no_lines' %}
+          <span class="badge-line-pos badge-lp-none">LINES NOT SET</span>
+        {% elif lr.line_position == 'not_visible' %}
+          <span class="badge-line-pos badge-lp-none">CAN'T JUDGE</span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if lr.error %}<div class="metric-row"><span class="text-critical">{{ lr.error }}</span></div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}{% endblock %}
