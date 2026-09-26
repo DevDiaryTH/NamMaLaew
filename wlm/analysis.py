@@ -14,6 +14,30 @@ from wlm import db, settings
 
 logger = logging.getLogger("wlm.analysis")
 
+# Hard server-side caps for free-text fields returned by the model.
+# These are intentionally looser than the prompt targets so they only fire on
+# extreme overruns, not on well-formed but slightly long responses.
+_CAP_DESC = 120       # estimated_level_description
+_CAP_REASON = 240     # reason
+_CAP_DISTANCE = 60    # distance_to_critical
+_CAP_OBS = 180        # per_lens[].observation
+
+
+def _cap_text(text: object, limit: int) -> object:
+    """Truncate *text* to at most *limit* chars, cutting at the last word boundary.
+
+    Appends "…" when truncation occurs.  Non-string values are returned unchanged
+    so that None and numeric sentinels pass through unmodified.
+    """
+    if not isinstance(text, str) or len(text) <= limit:
+        return text
+    # Cut at the last space at or before (limit - 1) to leave room for "…"
+    cut = text.rfind(" ", 0, limit)
+    if cut <= 0:
+        cut = limit - 1
+    return text[:cut] + "…"
+
+
 # Legacy pricing table kept for backward compatibility (test_core_status uses it).
 # With a Claude subscription the CLI reports total_cost_usd which is what the
 # dashboard stores; this table is no longer used for new analysis calls.
@@ -177,6 +201,19 @@ def analyze_images(
         "  Do not infer carport flooding from the street lens alone.\n"
     )
 
+    output_style_section = (
+        "Output style (short and scannable — lead with the conclusion):\n"
+        "  estimated_level_description: 1 sentence, ≤ ~80 chars, where the water is.\n"
+        '    Example: "Street flooded up to the gate; carport dry."\n'
+        "  reason: at most 2 short sentences, ≤ ~160 chars total: the deciding evidence then the status.\n"
+        '    Example: "Carport floor wet but no waterline; below amber line. Street water at gate → WARNING."\n'
+        "  distance_to_critical: ≤ ~40 chars.\n"
+        '    Example: "~1 step below carport floor"\n'
+        "  per_lens observation: 1 sentence, ≤ ~120 chars, water facts only.\n"
+        "  Lead with the conclusion. No filler, no hedging, no repeated restating of the schema or scale.\n"
+        "  Do not describe things unrelated to water (car colors, furniture, background scenery).\n"
+    )
+
     prompt = (
         "You are a water-level safety monitor analyzing security camera images.\n"
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
@@ -186,6 +223,7 @@ def analyze_images(
         "For each lens, estimate water_coverage_pct = percentage of the visible ground area in that lens covered by standing water (0-100).\n\n"
         + lines_section
         + low_light_section
+        + output_style_section
         + "\nAnalyze all provided images together and return a JSON object matching the schema exactly."
     )
     content.append({"type": "text", "text": prompt})
@@ -279,6 +317,18 @@ def analyze_images(
     # Clamp level_index to 0-100
     if structured.get("level_index") is not None:
         structured["level_index"] = max(0.0, min(100.0, float(structured["level_index"])))
+
+    # Apply hard server-side caps to free-text fields (model output only; error
+    # messages produced by _unknown_result are intentionally not touched here).
+    structured["estimated_level_description"] = _cap_text(
+        structured.get("estimated_level_description"), _CAP_DESC
+    )
+    structured["reason"] = _cap_text(structured.get("reason"), _CAP_REASON)
+    structured["distance_to_critical"] = _cap_text(
+        structured.get("distance_to_critical"), _CAP_DISTANCE
+    )
+    for lens in structured.get("per_lens") or []:
+        lens["observation"] = _cap_text(lens.get("observation"), _CAP_OBS)
 
     logger.info(
         "Analysis: status=%s level_index=%s confidence=%.2f",

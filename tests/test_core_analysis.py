@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from wlm.analysis import analyze_images, _unknown_result
+from wlm.analysis import analyze_images, _unknown_result, _cap_text
 
 
 def _make_image(path: Path, w: int = 100, h: int = 100) -> None:
@@ -335,3 +335,126 @@ class TestAnalysisPromptContent:
         prompt = self._capture_prompt()
         for pos in LINE_POSITIONS:
             assert pos in prompt, f"LINE_POSITIONS value '{pos}' missing from prompt"
+
+    def test_prompt_contains_output_style_guidance(self):
+        """Prompt must contain the output-style section with length targets and examples."""
+        prompt = self._capture_prompt()
+        assert "Output style" in prompt
+        assert "lead with" in prompt.lower() or "Lead with" in prompt
+        assert "estimated_level_description" in prompt
+        assert "~80 chars" in prompt or "80 chars" in prompt
+        assert "~160 chars" in prompt or "160 chars" in prompt
+        assert "~40 chars" in prompt or "40 chars" in prompt
+        assert "~120 chars" in prompt or "120 chars" in prompt
+        # Must include at least one concrete example
+        assert "carport dry" in prompt.lower() or "gate" in prompt.lower()
+
+
+class TestCapText:
+    """Unit tests for the _cap_text helper."""
+
+    def test_short_text_unchanged(self):
+        text = "Short text."
+        assert _cap_text(text, 50) == text
+
+    def test_exact_limit_unchanged(self):
+        text = "x" * 50
+        assert _cap_text(text, 50) == text
+
+    def test_none_unchanged(self):
+        assert _cap_text(None, 50) is None
+
+    def test_non_string_unchanged(self):
+        assert _cap_text(42, 50) == 42
+
+    def test_truncates_at_word_boundary(self):
+        text = "hello world foo bar baz"
+        # limit=16 — "hello world foo " is 16 chars; last space before 16 is at index 15
+        result = _cap_text(text, 16)
+        assert result.endswith("…")
+        assert not result.startswith(" ")
+        # Result without ellipsis must be a prefix ending at a word boundary
+        without_ellipsis = result[:-1]  # drop "…"
+        assert text.startswith(without_ellipsis)
+        assert len(result) <= 16 + 1  # word portion ≤ limit, plus one "…" char
+
+    def test_truncated_text_fits_within_limit(self):
+        text = "word " * 100  # 500 chars
+        limit = 50
+        result = _cap_text(text, limit)
+        assert result.endswith("…")
+        # The actual character count may exceed limit by the single "…" character,
+        # but the word portion must be ≤ limit.
+        assert len(result.rstrip("…")) <= limit
+
+    def test_no_space_before_limit(self):
+        """When there is no space to break on, cuts at limit-1."""
+        text = "x" * 100
+        limit = 10
+        result = _cap_text(text, limit)
+        assert result.endswith("…")
+        assert len(result) == 10  # 9 chars + "…"
+
+
+class TestCapTextAppliedToModelOutput:
+    """Verify that over-long model text in structured_output gets capped."""
+
+    def setup_method(self):
+        self.tmp = Path(tempfile.mkdtemp()) / "img.jpg"
+        _make_image(self.tmp)
+
+    def teardown_method(self):
+        if self.tmp.parent.exists():
+            import shutil
+            shutil.rmtree(self.tmp.parent, ignore_errors=True)
+
+    def test_overlong_reason_is_capped(self):
+        """A reason longer than _CAP_REASON characters must be truncated with '…'."""
+        from wlm.analysis import _CAP_REASON
+        long_reason = "word " * 200  # ~1000 chars
+        structured = _good_structured()
+        structured["reason"] = long_reason
+
+        with patch("wlm.analysis.shutil.which", return_value="/usr/bin/claude"), \
+             patch("wlm.analysis.subprocess.run") as mock_run:
+            mock_run.return_value = _make_proc_result(structured)
+            result, _, _, _ = analyze_images([("street", self.tmp)], conn=None)
+
+        assert len(result["reason"]) <= _CAP_REASON + 1  # +1 for "…"
+        assert result["reason"].endswith("…")
+
+    def test_overlong_observation_is_capped(self):
+        """A per_lens observation longer than _CAP_OBS must be truncated with '…'."""
+        from wlm.analysis import _CAP_OBS
+        long_obs = "water " * 60  # ~360 chars
+        structured = _good_structured()
+        structured["per_lens"][0]["observation"] = long_obs
+
+        with patch("wlm.analysis.shutil.which", return_value="/usr/bin/claude"), \
+             patch("wlm.analysis.subprocess.run") as mock_run:
+            mock_run.return_value = _make_proc_result(structured)
+            result, _, _, _ = analyze_images([("street", self.tmp)], conn=None)
+
+        obs = result["per_lens"][0]["observation"]
+        assert len(obs) <= _CAP_OBS + 1  # +1 for "…"
+        assert obs.endswith("…")
+
+    def test_short_reason_not_capped(self):
+        """A short reason must pass through unchanged."""
+        short_reason = "No water visible anywhere."
+        structured = _good_structured()
+        structured["reason"] = short_reason
+
+        with patch("wlm.analysis.shutil.which", return_value="/usr/bin/claude"), \
+             patch("wlm.analysis.subprocess.run") as mock_run:
+            mock_run.return_value = _make_proc_result(structured)
+            result, _, _, _ = analyze_images([("street", self.tmp)], conn=None)
+
+        assert result["reason"] == short_reason
+
+    def test_unknown_result_reason_not_capped(self):
+        """Error-path reasons from _unknown_result must not be altered by capping."""
+        # _unknown_result returns a static dict; capping is applied only to model
+        # structured_output, not to the error-path dicts.
+        result = _unknown_result("claude CLI timed out")
+        assert result["reason"] == "claude CLI timed out"
