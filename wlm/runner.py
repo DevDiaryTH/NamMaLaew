@@ -189,7 +189,11 @@ def run_cycle(
         level_index = result.get("level_index")
         per_lens_result = result.get("per_lens", [])
         final_status = alerts.derive_final_status(
-            model_status, level_index, per_lens=per_lens_result, conn=conn
+            model_status, level_index, per_lens=per_lens_result,
+            lens_lines=all_lines, failed_labels=failed_labels, conn=conn,
+        )
+        failed_deciding = sorted(
+            label for label in failed_labels if "critical" in all_lines.get(label, {})
         )
 
         logger.info(
@@ -216,6 +220,10 @@ def run_cycle(
         }
         if result.get("level_status") == "unknown" and result.get("reason"):
             reading_values["error"] = result["reason"]
+        if failed_deciding:
+            reading_values["error"] = (
+                f"Capture failed for deciding lens: {', '.join(failed_deciding)}"
+            )
 
         reading_id = db.insert_reading(reading_values, conn=conn)
 
@@ -250,6 +258,8 @@ def run_cycle(
             photo_path=composite_path,
             dry_run=dry_run,
             conn=conn,
+            # every lens failing is an unknown reading, already counted as a failure
+            failed_labels=failed_labels if frames else None,
         )
 
         # ---- heartbeat ----

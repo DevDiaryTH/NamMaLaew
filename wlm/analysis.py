@@ -188,6 +188,10 @@ def analyze_images(
         "  'at_or_above_warning'   — water has reached or exceeded the warning line\n"
         "  'at_or_above_critical'  — water has reached or exceeded the critical line\n"
         "When a lens image has no lines, always set line_position to 'no_lines'.\n"
+        "When lines are drawn on a lens, line_position is the deciding evidence.  Report\n"
+        "  'at_or_above_critical' only when the standing-water edge visibly touches or crosses\n"
+        "  the RED line itself; water elsewhere in the frame does not count.  Do not set\n"
+        f"  level_index at or above {level_critical:.0f} unless the water has reached the red line.\n"
     )
 
     low_light_section = (
@@ -198,18 +202,18 @@ def analyze_images(
         "  often appear wet or flooded; do not classify them as standing water on appearance\n"
         "  alone.  When the water edge relative to a drawn line cannot be judged with\n"
         "  confidence, use line_position 'not_visible' rather than guessing.\n"
-        "  Do not infer carport flooding from the street lens alone.\n"
+        "  Judge each lens from its own image; do not infer one lens's water level from another lens.\n"
     )
 
     output_style_section = (
         "Output style (short and scannable — lead with the conclusion):\n"
         "  estimated_level_description: 1 sentence, ≤ ~80 chars, where the water is.\n"
-        '    Example: "Street flooded up to the gate; carport dry."\n'
+        '    Example: "Water up to the gate; deciding area dry."\n'
         "  reason: ONE sentence, ≤ ~120 chars: the deciding evidence → the status. Count the characters;\n"
         "    stop before 120 even if detail is lost.  Do not restate the level_index or coverage numbers.\n"
-        '    Example: "Carport floor dry, water below amber line; street flooded to gate → WARNING."\n'
+        '    Example: "Water below amber line on deciding lens; flooded up to gate → WARNING."\n'
         "  distance_to_critical: ≤ ~40 chars.\n"
-        '    Example: "~1 step below carport floor"\n'
+        '    Example: "~30 cm below red line"\n'
         "  per_lens observation: 1 sentence, ≤ ~120 chars, water facts only.\n"
         "  Lead with the conclusion. No filler, no hedging, no repeated restating of the schema or scale.\n"
         "  Do not describe things unrelated to water (car colors, furniture, background scenery).\n"
@@ -220,7 +224,7 @@ def analyze_images(
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
         "If you cannot see water or cannot determine the level, use level_status='unknown' (level_index is then ignored; set it to 0).\n\n"
         f"Reference description (defines the level_index 0-100 scale):\n{reference_description}\n\n"
-        "level_index scale: 0=completely dry (no water anywhere), 100=maximum flooding (water covers carport floor / car wheels).\n\n"
+        "level_index scale: 0=completely dry (no water anywhere), 100=worst flooding as defined in the reference description above.\n\n"
         "For each lens, estimate water_coverage_pct = percentage of the visible ground area in that lens covered by standing water (0-100).\n\n"
         + lines_section
         + low_light_section

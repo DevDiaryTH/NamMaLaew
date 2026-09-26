@@ -349,6 +349,20 @@ class TestAnalysisPromptContent:
         # Must include at least one concrete example
         assert "carport dry" in prompt.lower() or "gate" in prompt.lower()
 
+    def test_prompt_has_no_house_specific_wording(self):
+        """Only the user's reference description may name their lenses or objects."""
+        from wlm import settings
+        prompt = self._capture_prompt()
+        prompt = prompt.replace(settings.get("reference_description", conn=None), "")
+        for word in ("carport", "car wheels", "street"):
+            # "street" also appears as this test's lens label
+            prompt = prompt.replace("Lens 'street'", "")
+            assert word not in prompt.lower(), f"house-specific word {word!r} in prompt"
+
+    def test_prompt_says_red_line_decides_critical(self):
+        prompt = self._capture_prompt()
+        assert "line_position is the deciding evidence" in prompt
+
 
 class TestCapText:
     """Unit tests for the _cap_text helper."""
