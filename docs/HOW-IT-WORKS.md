@@ -40,11 +40,7 @@ The IMILAB EC6 Dual has no RTSP, HTTP, or ONVIF — it uses Xiaomi's miio/P2P pr
                 └─ uses --json-schema to enforce structured output
                 └─ Claude returns: level_status, level_index, per_lens (line_position), etc.
 
-4. Status     derive_final_status():
-                └─ if level_index >= level_critical → critical
-                └─ if level_index >= level_warning  → warning
-                └─ if any lens line_position == at_or_above_critical → escalate → critical
-                └─ if any lens line_position == at_or_above_warning  → escalate → warning
+4. Status     derive_final_status()  (see "Alert lines" below)
 
 5. Store      INSERT INTO readings + lens_readings (SQLite)
 
@@ -53,16 +49,10 @@ The IMILAB EC6 Dual has no RTSP, HTTP, or ONVIF — it uses Xiaomi's miio/P2P pr
 
 ### Water level index (0–100)
 
-| level_index | Meaning |
-|-------------|---------|
-| 0 | Dry road, no water |
-| 25 | Water on the street outside the fence only |
-| 50 | Water at the fence line or front gate |
-| 75 | Water beginning to enter the carport |
-| 100 | Carport floor flooded, or water reaching the car wheels |
+The scale comes from each site's **Reference description** setting, which Claude reads on every check. The built-in default only says 0 = dry, 50 = water at the warning line, 100 = water at the critical line; each site should describe its own lenses and landmarks.
 
-- `level_warning` (default 50): alert fires when `level_index` ≥ this value
-- `level_critical` (default 90): critical alert + repeat every `critical_repeat_minutes` minutes
+- `level_warning` (default 50): WARNING when `level_index` ≥ this value
+- `level_critical` (default 90): CRITICAL when `level_index` ≥ this value, **only if no red line is drawn**; repeats every `critical_repeat_minutes` minutes
 - When `critical_confirm` is on (default), the first CRITICAL reading schedules a re-check after `critical_confirm_recheck_seconds` (default 120 s) instead of alerting immediately; only a second consecutive CRITICAL sounds the siren and sends the Telegram message. A "pending" row appears on the Alerts page. If the re-check returns a lower status, the alarm is silently cancelled.
 
 ### Alert lines and `line_position`
@@ -77,7 +67,18 @@ Users draw a polyline (coordinates normalized 0–1) on a real snapshot via the 
 | `at_or_above_warning` | Water is at or above the warning line |
 | `at_or_above_critical` | Water is at or above the critical line |
 
-**Escalation:** If any lens reports `at_or_above_critical`, the final status is at least `critical` — even if `level_index` is below the threshold.
+A lens with a red (critical) line is a **deciding lens**. Final status, in order:
+
+1. Claude returned no result → `unknown`
+2. A deciding lens failed to capture → `unknown`
+3. Any lens reports `at_or_above_critical` → `critical`
+4. A deciding lens reports `not_visible` or no `line_position` → `unknown`
+5. `level_index` vs `level_warning` / `level_critical`; `at_or_above_warning` lifts `normal` to `warning`
+6. With a deciding lens, `critical` from `level_index` alone is capped at `warning`
+
+With no red line anywhere, step 5 decides on its own. `unknown` readings count toward the failure alert (`failure_threshold`, default 3).
+
+**Camera down:** when some (not all) cameras fail to capture `failure_threshold` checks in a row, one Telegram alert names them; another follows when all are back.
 
 ### Claude cost
 

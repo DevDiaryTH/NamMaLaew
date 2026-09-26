@@ -28,6 +28,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from wlm import db as wlm_db
 from wlm import settings as wlm_settings
 from wlm import lines as wlm_lines
+from wlm.capture import parse_cam_streams
 from web import metrics as web_metrics
 
 logger = logging.getLogger("web.app")
@@ -406,12 +407,14 @@ async def settings_page(request: Request):
         current = wlm_settings.all_settings(conn=conn)
         sources = _sources_for_settings(conn)
         siren_muted_since = wlm_db.get_state("siren_muted", default="", conn=conn) or ""
+        setup = _site_setup_status(conn)
         conn.close()
     except Exception:
         logger.exception("Settings DB error")
         current = {s.key: s.default for s in wlm_settings.SPECS}
         sources = {s.key: "default" for s in wlm_settings.SPECS}
         siren_muted_since = ""
+        setup = None
 
     ctx = _base_context(request)
     ctx.update({
@@ -419,10 +422,37 @@ async def settings_page(request: Request):
         "current": current,
         "sources": sources,
         "siren_muted_since": siren_muted_since,
+        "setup": setup,
         "flash": request.session.pop("flash", None),
         "flash_error": request.session.pop("flash_error", None),
     })
     return templates.TemplateResponse(request, "settings.html", ctx)
+
+
+def _site_setup_status(conn) -> dict:
+    """Status chips for the Settings page's "Set up for your site" checklist."""
+    lenses = [label for label, _url in parse_cam_streams()]
+    deciding = sorted(
+        label for label, kinds in wlm_lines.get_lines(conn=conn).items() if "critical" in kinds
+    )
+    customised = (
+        wlm_settings.get("reference_description", conn=conn)
+        != wlm_settings.DEFAULT_REFERENCE_DESCRIPTION
+    )
+    steps = {
+        "cameras": (bool(lenses),
+                    f"{len(lenses)} LENS{'ES' if len(lenses) != 1 else ''}: {', '.join(lenses)}"
+                    if lenses else "NO CAMERAS SET"),
+        "lines": (bool(deciding),
+                  f"RED LINE ON {', '.join(deciding)}" if deciding else "NO RED LINE YET"),
+        "description": (customised, "CUSTOMISED" if customised else "STILL THE DEFAULT"),
+    }
+    done = sum(ok for ok, _text in steps.values())
+    return {
+        "steps": {key: {"ok": ok, "text": text} for key, (ok, text) in steps.items()},
+        "done": done,
+        "total": len(steps),
+    }
 
 
 def _validate_settings(form_data: dict) -> list[str]:
@@ -493,15 +523,18 @@ async def settings_save(request: Request):
             conn = wlm_db.connect()
             current = wlm_settings.all_settings(conn=conn)
             sources = _sources_for_settings(conn)
+            setup = _site_setup_status(conn)
             conn.close()
         except Exception:
             current = {s.key: s.default for s in wlm_settings.SPECS}
             sources = {s.key: "default" for s in wlm_settings.SPECS}
+            setup = None
         ctx = _base_context(request)
         ctx.update({
             "specs": wlm_settings.SPECS,
             "current": current,
             "sources": sources,
+            "setup": setup,
             "flash": None,
             "flash_error": "; ".join(errors),
         })
