@@ -144,6 +144,29 @@ def _sound_siren(reason: str, reading_id: int | None, dry_run: bool, conn=None) 
         logger.warning("Siren sound error: %s", siren_exc)
 
 
+def _drop_stale_pending(pending: str, dry_run: bool, conn=None) -> str:
+    """Forget an unconfirmed CRITICAL older than two capture intervals.
+
+    A re-check that never ran (e.g. the monitor restarted) must not let a CRITICAL
+    much later count as its confirmation.
+    """
+    if not pending:
+        return ""
+    try:
+        pending_ts = datetime.fromisoformat(pending)
+        if pending_ts.tzinfo is None:
+            pending_ts = pending_ts.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        pending_ts = None
+    max_age = timedelta(minutes=2 * settings.get_int("capture_interval_minutes", conn=conn))
+    if pending_ts is not None and datetime.now(timezone.utc) - pending_ts <= max_age:
+        return pending
+    if not dry_run:
+        db.set_state("critical_pending", "", conn=conn)
+    logger.info("Dropping stale critical_pending (%s)", pending)
+    return ""
+
+
 def process_alerts(
     final_status: str,
     result: dict,
@@ -171,6 +194,7 @@ def process_alerts(
     last_critical_ts_str = db.get_state("last_critical_alert_ts", default="", conn=conn) or ""
     # critical_pending: ISO UTC ts of first unconfirmed critical, "" when none pending
     critical_pending = db.get_state("critical_pending", default="", conn=conn) or ""
+    critical_pending = _drop_stale_pending(critical_pending, dry_run, conn=conn)
 
     desc = result.get("estimated_level_description", "")
     reason = result.get("reason", "")

@@ -378,3 +378,40 @@ class TestCriticalConfirm:
         # No alert rows
         rows = tmp_db.execute("SELECT * FROM alerts").fetchall()
         assert len(rows) == 0
+
+
+class TestStalePending:
+    def test_stale_pending_is_not_a_confirmation(self, tmp_db):
+        """A pending CRITICAL from hours ago must not confirm a new CRITICAL."""
+        db.set_setting("critical_confirm", "1", conn=tmp_db)
+        db.set_setting("capture_interval_minutes", "10", conn=tmp_db)
+        old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat(timespec="seconds")
+        db.set_state("critical_pending", old, conn=tmp_db)
+
+        with patch("wlm.alerts.tg.send_photo") as mock_photo, \
+             patch("wlm.alerts.tg.send_message") as mock_msg, \
+             patch("wlm.alerts.siren.is_configured", return_value=False):
+            process_alerts("critical", _make_result("critical", 92.0), None, None,
+                           dry_run=False, conn=tmp_db)
+
+        mock_photo.assert_not_called()
+        mock_msg.assert_not_called()
+        new_pending = db.get_state("critical_pending", default="", conn=tmp_db)
+        assert new_pending and new_pending != old
+
+    def test_recent_pending_confirms(self, tmp_db):
+        db.set_setting("critical_confirm", "1", conn=tmp_db)
+        db.set_setting("capture_interval_minutes", "10", conn=tmp_db)
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(timespec="seconds")
+        db.set_state("critical_pending", recent, conn=tmp_db)
+        db.set_setting("telegram_enabled", "1", conn=tmp_db)
+        db.set_setting("telegram_bot_token", "t", conn=tmp_db)
+        db.set_setting("telegram_chat_id", "c", conn=tmp_db)
+
+        with patch("wlm.alerts.tg.send_message", return_value=(True, None)) as mock_msg, \
+             patch("wlm.alerts.siren.is_configured", return_value=False):
+            process_alerts("critical", _make_result("critical", 92.0), None, None,
+                           dry_run=False, conn=tmp_db)
+
+        mock_msg.assert_called_once()
+        assert db.get_state("critical_pending", default="", conn=tmp_db) == ""
