@@ -1377,3 +1377,144 @@ hr {
 
 /* In a metric row the badge sizes to its text rather than stretching or overflowing. */
 .metric-row .badge-line-pos { max-width: 100%; }
+
+/* ==========================================================================
+   RAIN AROUND TILE
+   ========================================================================== */
+
+/* Button groups: radius row + time row, right-aligned in the header */
+.rain-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  align-items: flex-end;
+}
+
+.rain-radius-row,
+.rain-time-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+/* Shared button base for both radius and time selectors */
+.rain-radius-btn,
+.rain-time-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border: var(--border-card);
+  box-shadow: var(--shadow-card);
+  border-radius: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: transform var(--dur-short) var(--ease-out),
+              box-shadow var(--dur-short) var(--ease-out),
+              background var(--dur-short) var(--ease-out);
+  white-space: nowrap;
+}
+
+.rain-radius-btn:hover,
+.rain-time-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.rain-radius-btn:active,
+.rain-time-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-card-press);
+}
+
+.rain-radius-btn.active,
+.rain-time-btn.active {
+  background: var(--color-accent-2);
+  color: var(--color-paper);
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.2);
+}
+
+.rain-radius-btn:focus-visible,
+.rain-time-btn:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.rain-time-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Full-width map */
+.rain-map-container {
+  width: 100%;
+  height: 380px;
+  border: var(--border-card);
+}
+
+.rain-map-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-top: var(--space-2xs);
+}
+
+.rain-frame-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Forecast legend (shown only in +N mode) */
+.rain-forecast-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-2xs);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+/* display:flex above would otherwise override the hidden attribute */
+.rain-forecast-legend[hidden] {
+  display: none;
+}
+
+.rain-legend-label {
+  font-weight: 600;
+}
+
+.rain-legend-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rain-legend-swatch::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  background: var(--swatch-c);
+  border: 1px solid var(--color-rule);
+  flex-shrink: 0;
+}
+
+/* Narrow screens: reduce map height, ensure buttons wrap */
+@media (max-width: 700px) {
+  .rain-map-container {
+    height: 300px;
+  }
+
+  .rain-controls {
+    align-items: flex-start;
+  }
+}

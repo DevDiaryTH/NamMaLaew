@@ -106,6 +106,12 @@
   /* --- Chart colours (non-status; neither yellow nor red) --- */
   --color-chart-level:  var(--color-ink);
   --color-chart-rain:   oklch(55% 0.09 240);
+  /* Forecast rain-intensity bands. They are drawn over the OSM base map,
+     which stays light in both themes, so there is no dark-mode override. */
+  --color-rain-1:       oklch(86% 0.06 230);
+  --color-rain-2:       oklch(72% 0.11 240);
+  --color-rain-3:       oklch(54% 0.15 255);
+  --color-rain-4:       oklch(40% 0.16 275);
   --color-chart-lens-a: var(--color-ink-2);
   --color-chart-lens-b: oklch(52% 0.10 300);
   --color-chart-grid:   var(--color-paper-3);
