@@ -181,13 +181,23 @@ def run_cycle(
             logger.warning("Failed to load learning examples: %s", exc)
             examples = []
 
+        # Load recent-reading history context when the feature is enabled
+        history_text: str | None = None
+        if settings.get_bool("learning_use_history", conn=conn):
+            try:
+                history_text = wlm_learning.recent_context(conn=conn)
+            except Exception as exc:
+                logger.warning("Failed to load history context: %s", exc)
+
         if overlay_frames:
             result, input_tokens, output_tokens, cost_usd = analyze_images(
-                overlay_frames, conn=conn, lens_lines=all_lines, examples=examples or None
+                overlay_frames, conn=conn, lens_lines=all_lines, examples=examples or None,
+                history_text=history_text,
             )
         elif frames:
             result, input_tokens, output_tokens, cost_usd = analyze_images(
-                frames, conn=conn, lens_lines=all_lines, examples=examples or None
+                frames, conn=conn, lens_lines=all_lines, examples=examples or None,
+                history_text=history_text,
             )
         else:
             from wlm.analysis import _unknown_result

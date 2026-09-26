@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from wlm import db, settings
@@ -190,6 +191,100 @@ def list_examples(conn=None) -> list[dict]:
             "SELECT * FROM feedback WHERE is_example = 1 ORDER BY ts DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def recent_context(
+    conn=None,
+    n: int = 6,
+    window_minutes: int = 120,
+    now: datetime | None = None,
+) -> str | None:
+    """Return a short text summary of recent readings and rain, or None when there is nothing to say.
+
+    Args:
+        conn: optional DB connection.
+        n: maximum number of readings to include.
+        window_minutes: how far back to look for readings.
+        now: reference time (UTC); defaults to the current UTC time. Provided for
+            deterministic tests.
+
+    The returned string lists readings chronologically (newest last) and, when
+    weather data is available, a "Rain in last 3h" line.  Returns None when the
+    window contains no non-unknown readings and no rain data.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    cutoff = (now - timedelta(minutes=window_minutes)).isoformat(timespec="seconds")
+    rain_cutoff = (now - timedelta(hours=3)).isoformat(timespec="seconds")
+    now_iso_str = now.isoformat(timespec="seconds")
+
+    with db._conn(conn) as c:
+        rows = c.execute(
+            """SELECT r.ts, r.status, r.level_index, r.confidence,
+                      f.verdict, f.true_status, f.true_level_index
+               FROM readings r
+               LEFT JOIN feedback f ON f.reading_id = r.id
+               WHERE r.ts >= ? AND r.status != 'unknown'
+               ORDER BY r.ts DESC
+               LIMIT ?""",
+            (cutoff, n),
+        ).fetchall()
+
+        rain_row = c.execute(
+            """SELECT SUM(precipitation_mm) AS total
+               FROM weather
+               WHERE hour_ts >= ? AND hour_ts <= ?
+               AND precipitation_mm IS NOT NULL""",
+            (rain_cutoff, now_iso_str),
+        ).fetchone()
+
+    lines: list[str] = []
+    for row in reversed(rows):
+        ts_str = row["ts"]
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+
+        age_minutes = int((now - ts).total_seconds() / 60)
+        time_label = f"{ts.strftime('%H:%M')} UTC (-{age_minutes}m ago)"
+
+        verdict = row["verdict"]
+        if verdict == "wrong":
+            display_status = row["true_status"] or row["status"]
+            display_level = row["true_level_index"]
+            annotation = " (human-corrected)"
+        elif verdict == "correct":
+            display_status = row["status"]
+            display_level = row["level_index"]
+            annotation = " (human-confirmed)"
+        else:
+            display_status = row["status"]
+            display_level = row["level_index"]
+            annotation = ""
+
+        level_str = f"{display_level:.1f}" if display_level is not None else "-"
+        conf_pct = int(round((row["confidence"] or 0.0) * 100))
+        lines.append(
+            f"  {time_label}  status={display_status}  level={level_str}  conf={conf_pct}%{annotation}"
+        )
+
+    rain_total = rain_row["total"] if rain_row else None
+    rain_line = f"Rain in last 3h: {rain_total:.1f} mm" if rain_total is not None else None
+
+    if not lines and rain_line is None:
+        return None
+
+    parts: list[str] = []
+    if lines:
+        parts.append("\n".join(lines))
+    if rain_line:
+        parts.append(rain_line)
+
+    return "\n".join(parts)
 
 
 def select_examples(
