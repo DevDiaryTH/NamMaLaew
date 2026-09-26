@@ -159,3 +159,34 @@ def test_capture_retries_when_first_frame_is_blank(tmp_path, monkeypatch):
     assert len(calls) == 2
     assert "-skip_frame" in calls[0] and calls[0][calls[0].index("-skip_frame") + 1] == "nokey"
     assert calls[0].index("-skip_frame") < calls[0].index("-i")
+
+
+class TestBuildComposite:
+    def _frames(self, tmp_path, n, size=(640, 360)):
+        frames = []
+        for i in range(n):
+            path = tmp_path / f"lens{i}.jpg"
+            Image.new("RGB", size, (i * 40, 80, 120)).save(path, "JPEG")
+            frames.append((f"lens{i}", path))
+        return frames
+
+    def test_two_frames_stack_vertically(self, snap_dir, tmp_path):
+        from wlm.capture import build_composite
+        out = build_composite(self._frames(tmp_path, 2))
+        assert Image.open(out).size == (640, 720)
+
+    def test_single_frame_keeps_size(self, snap_dir, tmp_path):
+        from wlm.capture import build_composite
+        out = build_composite(self._frames(tmp_path, 1))
+        assert Image.open(out).size == (640, 360)
+
+    def test_four_frames_make_two_by_two_grid(self, snap_dir, tmp_path):
+        from wlm.capture import build_composite
+        out = build_composite(self._frames(tmp_path, 4))
+        assert Image.open(out).size == (1280, 720)
+
+    def test_five_frames_use_three_columns(self, snap_dir, tmp_path):
+        from wlm.capture import build_composite
+        out = build_composite(self._frames(tmp_path, 5, size=(1920, 1080)))
+        # each cell shrunk to 1280 // 3 = 426 wide; 2 rows
+        assert Image.open(out).size == (426 * 3, 239 * 2)

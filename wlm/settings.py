@@ -21,11 +21,9 @@ class SettingSpec:
 
 
 DEFAULT_REFERENCE_DESCRIPTION = (
-    "Two lenses of one camera. 'street' shows the road outside the front gate/fence "
-    "(trend indicator). 'carport' shows the driveway/carport with two cars inside the gate "
-    "(decides critical). level_index scale: 0 = street dry; 25 = water on the street only; "
-    "50 = water reaches the front gate/fence line; 75 = water entering the driveway; "
-    "100 = water covers the carport floor or reaches the car wheels."
+    "Describe each lens by its label and what it shows. Say which lens decides critical "
+    "(draw red/amber lines on it). level_index scale: 0 = dry; 50 = water at the warning "
+    "line; 100 = water at the critical line."
 )
 
 SPECS: list[SettingSpec] = [

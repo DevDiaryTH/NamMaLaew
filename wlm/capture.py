@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import subprocess
@@ -158,24 +159,34 @@ def image_metrics(path: Path) -> dict:
 
 
 def build_composite(frames: list[tuple[str, Path]], max_width: int = 1280) -> Path:
-    """Stack frames vertically into a single composite JPEG with lens labels."""
+    """Combine frames into a single composite JPEG with lens labels.
+
+    Up to two frames are stacked vertically; three or more go in a grid of
+    ceil(sqrt(n)) columns so the image stays close to square.
+    """
     if not frames:
         raise ValueError("Cannot build composite from zero frames")
 
     snap_dir = db.snapshot_dir()
     snap_dir.mkdir(parents=True, exist_ok=True)
 
+    cols = 1 if len(frames) <= 2 else math.ceil(math.sqrt(len(frames)))
+    cell_width = max_width // cols
+
     opened: list[tuple[str, Image.Image]] = []
     for label, path in frames:
         img = Image.open(path).convert("RGB")
         w, h = img.size
-        if w > max_width:
-            ratio = max_width / w
+        if w > cell_width:
+            ratio = cell_width / w
             img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
         opened.append((label, img))
 
-    total_width = max(img.size[0] for _, img in opened)
-    total_height = sum(img.size[1] for _, img in opened)
+    rows = [opened[i:i + cols] for i in range(0, len(opened), cols)]
+    col_width = max(img.size[0] for _, img in opened)
+    row_heights = [max(img.size[1] for _, img in row) for row in rows]
+    total_width = col_width * min(cols, len(opened))
+    total_height = sum(row_heights)
 
     composite = Image.new("RGB", (total_width, total_height), (0, 0, 0))
     draw = ImageDraw.Draw(composite)
@@ -192,11 +203,13 @@ def build_composite(frames: list[tuple[str, Path]], max_width: int = 1280) -> Pa
             pass
 
     y_offset = 0
-    for label, img in opened:
-        composite.paste(img, (0, y_offset))
-        draw.text((9, y_offset + 9), label, fill=(0, 0, 0), font=font)
-        draw.text((8, y_offset + 8), label, fill=(255, 255, 0), font=font)
-        y_offset += img.size[1]
+    for row, row_height in zip(rows, row_heights):
+        for col, (label, img) in enumerate(row):
+            x_offset = col * col_width
+            composite.paste(img, (x_offset, y_offset))
+            draw.text((x_offset + 9, y_offset + 9), label, fill=(0, 0, 0), font=font)
+            draw.text((x_offset + 8, y_offset + 8), label, fill=(255, 255, 0), font=font)
+        y_offset += row_height
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = snap_dir / f"{timestamp}-composite.jpg"

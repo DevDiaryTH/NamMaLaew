@@ -368,6 +368,89 @@ class TestEscalationRules:
 
 
 # ---------------------------------------------------------------------------
+# Lines decide critical
+# ---------------------------------------------------------------------------
+
+_CARPORT_LINES = {"carport": {"warning": [[0.2, 0.3], [0.4, 0.9]],
+                              "critical": [[0.1, 0.3], [0.3, 0.9]]}}
+
+
+def _lens(label: str, position: str | None) -> dict:
+    lens = {"label": label, "observation": "x", "water_coverage_pct": 10.0}
+    if position is not None:
+        lens["line_position"] = position
+    return lens
+
+
+class TestLinesDecideCritical:
+    def test_high_index_below_red_line_capped_at_warning(self, tmp_db):
+        """Reading #111: level_index 95 but the water is below the lines → warning."""
+        per_lens = [_lens("street", "no_lines"), _lens("carport", "below_warning")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, conn=tmp_db)
+        assert status == "warning"
+
+    def test_red_line_reached_is_critical(self, tmp_db):
+        per_lens = [_lens("street", "no_lines"), _lens("carport", "at_or_above_critical")]
+        status = derive_final_status("warning", 60.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, conn=tmp_db)
+        assert status == "critical"
+
+    def test_not_visible_on_deciding_lens_is_unknown(self, tmp_db):
+        per_lens = [_lens("street", "no_lines"), _lens("carport", "not_visible")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, conn=tmp_db)
+        assert status == "unknown"
+
+    def test_missing_position_on_deciding_lens_is_unknown(self, tmp_db):
+        per_lens = [_lens("street", "no_lines"), _lens("carport", None)]
+        status = derive_final_status("warning", 60.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, conn=tmp_db)
+        assert status == "unknown"
+
+    def test_critical_on_one_deciding_lens_wins_over_not_visible(self, tmp_db):
+        lines = {"front": {"critical": [[0.1, 0.1], [0.9, 0.9]]},
+                 "back": {"critical": [[0.1, 0.1], [0.9, 0.9]]}}
+        per_lens = [_lens("front", "at_or_above_critical"), _lens("back", "not_visible")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens,
+                                     lens_lines=lines, conn=tmp_db)
+        assert status == "critical"
+
+    def test_deciding_lens_capture_failed_is_unknown(self, tmp_db):
+        per_lens = [_lens("street", "no_lines")]
+        status = derive_final_status("warning", 60.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, failed_labels=["carport"],
+                                     conn=tmp_db)
+        assert status == "unknown"
+
+    def test_other_lens_capture_failed_still_decides(self, tmp_db):
+        per_lens = [_lens("carport", "below_warning")]
+        status = derive_final_status("warning", 60.0, per_lens=per_lens,
+                                     lens_lines=_CARPORT_LINES, failed_labels=["street"],
+                                     conn=tmp_db)
+        assert status == "warning"
+
+    def test_no_red_lines_keeps_index_thresholds(self, tmp_db):
+        per_lens = [_lens("camera", "no_lines")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens,
+                                     lens_lines={}, conn=tmp_db)
+        assert status == "critical"
+
+    def test_warning_only_lines_do_not_cap(self, tmp_db):
+        lines = {"camera": {"warning": [[0.1, 0.1], [0.9, 0.9]]}}
+        per_lens = [_lens("camera", "at_or_above_warning")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens,
+                                     lens_lines=lines, conn=tmp_db)
+        assert status == "critical"
+
+    def test_lines_loaded_from_settings_when_not_passed(self, tmp_db):
+        db.set_setting("level_lines", json.dumps(_CARPORT_LINES), conn=tmp_db)
+        per_lens = [_lens("carport", "below_warning")]
+        status = derive_final_status("critical", 95.0, per_lens=per_lens, conn=tmp_db)
+        assert status == "warning"
+
+
+# ---------------------------------------------------------------------------
 # Runner integration: line_position storage & composite from overlays
 # ---------------------------------------------------------------------------
 

@@ -14,6 +14,9 @@ State keys in runtime_state:
   recheck_at             - ISO UTC timestamp after which the runner should run a cycle
                            immediately (to re-check an unconfirmed critical).  "" when
                            no recheck is scheduled.
+  consecutive_lens_failures - int, consecutive cycles in which at least one lens failed
+                              to capture
+  lens_failure_alert_sent   - "1" | "0"
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from wlm import db, settings, siren
+from wlm import lines as wlm_lines
 from wlm import telegram as tg
 
 logger = logging.getLogger("wlm.alerts")
@@ -54,16 +58,38 @@ def _derive_final_status(
     model_status: str | None,
     level_index: float | None,
     per_lens: list[dict] | None = None,
+    lens_lines: dict | None = None,
+    failed_labels: list[str] | None = None,
     conn=None,
 ) -> str:
-    """Derive the final status from model output + threshold settings.
+    """Derive the final status from model output + threshold settings + alert lines.
 
-    Escalation rules (applied only when model_status is not 'unknown'):
-    - If any lens line_position == 'at_or_above_critical' → at least critical
-    - If any lens line_position == 'at_or_above_warning'  → at least warning
+    A "deciding" lens is one with a critical line drawn on it.  Rules, in order:
+    - model_status 'unknown' or no level_index              → unknown
+    - a deciding lens failed to capture                     → unknown
+    - any lens line_position == 'at_or_above_critical'      → critical
+    - a deciding lens is 'not_visible' or has no position   → unknown
+    - level_index vs thresholds; 'at_or_above_warning' lifts normal → warning
+    - with a deciding lens, critical from level_index alone is capped at warning
+    With no deciding lens, the level_index thresholds decide on their own.
     """
     if model_status is None or model_status == "unknown" or level_index is None:
         return "unknown"
+
+    if lens_lines is None:
+        lens_lines = wlm_lines.get_lines(conn=conn)
+    deciding = {label for label, kinds in lens_lines.items() if "critical" in kinds}
+    if deciding & set(failed_labels or []):
+        return "unknown"
+
+    per_lens = per_lens or []
+    positions = {lens.get("label"): lens.get("line_position") for lens in per_lens}
+    if "at_or_above_critical" in positions.values():
+        return "critical"
+    captured_deciding = deciding - set(failed_labels or [])
+    if any(positions.get(label) in (None, "not_visible") for label in captured_deciding):
+        return "unknown"
+
     level_critical = settings.get_float("level_critical", conn=conn)
     level_warning = settings.get_float("level_warning", conn=conn)
     if level_index >= level_critical:
@@ -73,16 +99,10 @@ def _derive_final_status(
     else:
         status = "normal"
 
-    # Escalate from line positions
-    if per_lens:
-        for lens in per_lens:
-            lp = lens.get("line_position")
-            if lp == "at_or_above_critical":
-                return "critical"
-        for lens in per_lens:
-            lp = lens.get("line_position")
-            if lp == "at_or_above_warning" and status == "normal":
-                status = "warning"
+    if status == "normal" and "at_or_above_warning" in positions.values():
+        status = "warning"
+    if status == "critical" and deciding:
+        status = "warning"
 
     return status
 
@@ -91,10 +111,15 @@ def derive_final_status(
     model_status: str | None,
     level_index: float | None,
     per_lens: list[dict] | None = None,
+    lens_lines: dict | None = None,
+    failed_labels: list[str] | None = None,
     conn=None,
 ) -> str:
     """Public wrapper — used by runner and tests."""
-    return _derive_final_status(model_status, level_index, per_lens=per_lens, conn=conn)
+    return _derive_final_status(
+        model_status, level_index, per_lens=per_lens,
+        lens_lines=lens_lines, failed_labels=failed_labels, conn=conn,
+    )
 
 
 def _send_alert(
@@ -186,6 +211,7 @@ def process_alerts(
     photo_path: Path | None,
     dry_run: bool = False,
     conn=None,
+    failed_labels: list[str] | None = None,
 ) -> None:
     """Apply alert policy, send notifications, update runtime_state.
 
@@ -370,9 +396,39 @@ def process_alerts(
             _send_alert("failure", msg, None, reading_id, dry_run, conn=conn)
             failure_newly_sent = True
 
+    # ---- some (not all) cameras failing ----
+    # All cameras failing makes the reading unknown, which the block above covers.
+    lens_consecutive = _get_state_int("consecutive_lens_failures", conn=conn)
+    lens_alert_sent = db.get_state("lens_failure_alert_sent", default="0", conn=conn) == "1"
+    new_lens_consecutive = lens_consecutive + 1 if failed_labels else 0
+    lens_alert_newly_sent = False
+    if (new_lens_consecutive >= failure_threshold and not lens_alert_sent
+            and settings.get_bool("alert_on_failure", conn=conn)):
+        names = ", ".join(failed_labels)
+        msg = (
+            f"📷 กล้องบางตัวถ่ายภาพไม่ได้ {new_lens_consecutive} ครั้งติดต่อกัน: {names}\n"
+            f"(Some cameras failing {new_lens_consecutive} times in a row: {names})\n"
+            f"เวลา: {now_local}"
+        )
+        _send_alert("failure", msg, None, reading_id, dry_run, conn=conn)
+        lens_alert_newly_sent = True
+    elif new_lens_consecutive == 0 and lens_alert_sent:
+        msg = (
+            f"📷 กล้องกลับมาใช้งานได้ครบแล้ว\n"
+            f"(All cameras capturing again)\n"
+            f"เวลา: {now_local}"
+        )
+        _send_alert("recovered", msg, None, reading_id, dry_run, conn=conn)
+
     # ---- update state (skip in dry_run) ----
     if dry_run:
         return
+
+    db.set_state("consecutive_lens_failures", str(new_lens_consecutive), conn=conn)
+    if new_lens_consecutive == 0:
+        db.set_state("lens_failure_alert_sent", "0", conn=conn)
+    elif lens_alert_newly_sent:
+        db.set_state("lens_failure_alert_sent", "1", conn=conn)
 
     # unknown does NOT overwrite last_status.
     # A pending (unconfirmed) critical also must not overwrite last_status, so that

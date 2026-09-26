@@ -420,3 +420,55 @@ class TestStalePending:
 
         mock_msg.assert_called_once()
         assert db.get_state("critical_pending", default="", conn=tmp_db) == ""
+
+
+class TestLensFailureAlert:
+    """Some (not all) cameras failing to capture."""
+
+    def _run(self, tmp_db, failed_labels, dry_run=False):
+        with patch("wlm.alerts.tg.send_message") as mock_msg:
+            mock_msg.return_value = (True, None)
+            process_alerts("normal", _make_result(), None, None, dry_run=dry_run,
+                           conn=tmp_db, failed_labels=failed_labels)
+
+    def _rows(self, tmp_db, kind):
+        return tmp_db.execute("SELECT * FROM alerts WHERE kind=?", (kind,)).fetchall()
+
+    def test_alert_after_threshold_names_lens(self, tmp_db):
+        for _ in range(2):
+            self._run(tmp_db, ["carport"])
+        assert self._rows(tmp_db, "failure") == []
+        self._run(tmp_db, ["carport"])  # threshold is 3
+        rows = self._rows(tmp_db, "failure")
+        assert len(rows) == 1
+        assert "carport" in rows[0]["message"]
+
+    def test_alert_sent_only_once(self, tmp_db):
+        for _ in range(5):
+            self._run(tmp_db, ["carport"])
+        assert len(self._rows(tmp_db, "failure")) == 1
+
+    def test_recovered_when_all_cameras_back(self, tmp_db):
+        for _ in range(3):
+            self._run(tmp_db, ["carport"])
+        self._run(tmp_db, [])
+        assert len(self._rows(tmp_db, "recovered")) == 1
+        assert db.get_state("consecutive_lens_failures", conn=tmp_db) == "0"
+        assert db.get_state("lens_failure_alert_sent", conn=tmp_db) == "0"
+
+    def test_no_recovered_without_prior_alert(self, tmp_db):
+        self._run(tmp_db, ["carport"])
+        self._run(tmp_db, None)
+        assert self._rows(tmp_db, "recovered") == []
+
+    def test_disabled_by_alert_on_failure(self, tmp_db):
+        db.set_setting("alert_on_failure", "0", conn=tmp_db)
+        for _ in range(3):
+            self._run(tmp_db, ["carport"])
+        assert self._rows(tmp_db, "failure") == []
+
+    def test_dry_run_writes_no_state(self, tmp_db):
+        for _ in range(3):
+            self._run(tmp_db, ["carport"], dry_run=True)
+        assert self._rows(tmp_db, "failure") == []
+        assert db.get_state("consecutive_lens_failures", default="", conn=tmp_db) == ""
