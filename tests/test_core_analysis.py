@@ -343,7 +343,7 @@ class TestAnalysisPromptContent:
         assert "lead with" in prompt.lower() or "Lead with" in prompt
         assert "estimated_level_description" in prompt
         assert "~80 chars" in prompt or "80 chars" in prompt
-        assert "~160 chars" in prompt or "160 chars" in prompt
+        assert "ONE sentence, ≤ ~120 chars" in prompt
         assert "~40 chars" in prompt or "40 chars" in prompt
         assert "~120 chars" in prompt or "120 chars" in prompt
         # Must include at least one concrete example

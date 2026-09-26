@@ -205,8 +205,9 @@ def analyze_images(
         "Output style (short and scannable — lead with the conclusion):\n"
         "  estimated_level_description: 1 sentence, ≤ ~80 chars, where the water is.\n"
         '    Example: "Street flooded up to the gate; carport dry."\n'
-        "  reason: at most 2 short sentences, ≤ ~160 chars total: the deciding evidence then the status.\n"
-        '    Example: "Carport floor wet but no waterline; below amber line. Street water at gate → WARNING."\n'
+        "  reason: ONE sentence, ≤ ~120 chars: the deciding evidence → the status. Count the characters;\n"
+        "    stop before 120 even if detail is lost.  Do not restate the level_index or coverage numbers.\n"
+        '    Example: "Carport floor dry, water below amber line; street flooded to gate → WARNING."\n'
         "  distance_to_critical: ≤ ~40 chars.\n"
         '    Example: "~1 step below carport floor"\n'
         "  per_lens observation: 1 sentence, ≤ ~120 chars, water facts only.\n"
