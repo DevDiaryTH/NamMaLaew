@@ -19,6 +19,16 @@ Settings resolve in this order: dashboard (SQLite) → `.env` → built-in defau
 | `SNAPSHOT_RETENTION_HOURS` | `168` | — | How long to keep snapshots (168 = 7 days) |
 | `LATITUDE` | `` | ✓ | Open-Meteo latitude (empty = rainfall data disabled) |
 | `LONGITUDE` | `` | ✓ | Open-Meteo longitude |
+
+### Rain around the site
+
+Setting `LATITUDE` and `LONGITUDE` (or the equivalent dashboard settings) enables the **RAIN AROUND / ฝนรอบพื้นที่** tile on the overview page.
+
+**Compass** — shows precipitation at 8 cardinal/intercardinal points at the chosen radius (10, 25, or 50 km). Values are Open-Meteo model forecasts sampled at those 8 geographic points; they are model estimates, not radar observations.
+
+**Map** — a Leaflet map with an OpenStreetMap base layer and a RainViewer radar overlay. RainViewer free-tier tiles are served at native zoom levels up to z7 (Leaflet upscales for higher zooms). The map fetches radar frame data directly from `api.rainviewer.com` in the browser and animates past frames.
+
+**External requests made by the browser:** `tile.openstreetmap.org` (map tiles) and `api.rainviewer.com` + `tilecache.rainviewer.com` (radar tiles). No API key is required for either service at the default usage level.
 | `MQTT_HOST` | `` | ✓ | MQTT broker for the siren (empty = siren off) |
 | `MQTT_PORT` | `1883` | ✓ | MQTT broker port |
 | `MQTT_USERNAME` | `` | ✓ | MQTT login |
