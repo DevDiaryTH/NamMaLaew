@@ -29,10 +29,11 @@
     return toRad(bearing - 90);
   }
 
+  // Square-root scale so light rain (0.2–1 mm/h, the common case) is still
+  // visibly different from dry and from heavier rain; saturates at 2 mm/h.
   function precipOpacity(precipNow) {
-    if (precipNow === null || precipNow === undefined || precipNow <= 0) return 0.08;
-    if (precipNow >= 5) return 0.90;
-    return 0.08 + (precipNow / 5) * 0.82;
+    if (precipNow === null || precipNow === undefined || precipNow <= 0) return 0.06;
+    return 0.2 + 0.75 * Math.min(1, Math.sqrt(precipNow / 2));
   }
 
   function fmtMM(v) {
@@ -442,7 +443,12 @@
         capEl.textContent = "ไม่มีข้อมูลฝน · Rain data unavailable";
       } else {
         var rainFrom = data.rain_from || [];
-        if (rainFrom.length) {
+        if (rainFrom.length >= 6) {
+          // rain_from is sorted heaviest first
+          var top = rainFrom.slice(0, 2).join(", ");
+          capEl.textContent = "ฝนรอบทุกทิศ หนักสุดทาง " + top
+            + " · Rain all around, heaviest " + top;
+        } else if (rainFrom.length) {
           capEl.textContent = "ฝนมาจากทิศ " + rainFrom.join(", ")
             + " · Rain from " + rainFrom.join(", ");
         } else {
