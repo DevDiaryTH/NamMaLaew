@@ -925,7 +925,9 @@ async def api_series(request: Request, range: str = "24h", _=Depends(require_aut
 
 
 @app.get("/api/rain-around")
-async def api_rain_around(request: Request, radius: int = 25, _=Depends(require_auth)):
+def api_rain_around(request: Request, radius: int = 25, _=Depends(require_auth)):
+    # Plain def: FastAPI runs it in a worker thread, so the blocking HTTP call
+    # to Open-Meteo doesn't stall the event loop.
     if radius not in ALLOWED_RADII:
         raise HTTPException(status_code=400, detail=f"radius must be one of {list(ALLOWED_RADII)}")
     try:

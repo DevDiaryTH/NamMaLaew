@@ -161,13 +161,9 @@ def fetch_rain_around(lat: float, lon: float, radius_km: int) -> dict:
 
     # Directions where rain is arriving: precip_now >= 0.1 or precip_past3h >= 0.1,
     # sorted by (precip_now + precip_past3h) descending.
-    rain_from = sorted(
-        [d["dir"] for d in directions if d["precip_now"] >= 0.1 or d["precip_past3h"] >= 0.1],
-        key=lambda name: next(
-            -(d["precip_now"] + d["precip_past3h"])
-            for d in directions if d["dir"] == name
-        ),
-    )
+    wet = [d for d in directions if d["precip_now"] >= 0.1 or d["precip_past3h"] >= 0.1]
+    wet.sort(key=lambda d: d["precip_now"] + d["precip_past3h"], reverse=True)
+    rain_from = [d["dir"] for d in wet]
 
     return {
         "radius_km":  radius_km,
@@ -181,8 +177,7 @@ def fetch_rain_around(lat: float, lon: float, radius_km: int) -> dict:
 def get_rain_around(radius_km: int, conn=None) -> Optional[dict]:
     """Return cached or fresh rain-around data, or None if coords are not configured.
 
-    Results are cached per (lat, lon, radius_km) for 15 minutes using
-    time.monotonic() so the wall clock cannot be spoofed by DST changes.
+    Results are cached per (lat, lon, radius_km) for 15 minutes.
     """
     lat_str = settings.get("latitude",  conn=conn).strip()
     lon_str = settings.get("longitude", conn=conn).strip()
