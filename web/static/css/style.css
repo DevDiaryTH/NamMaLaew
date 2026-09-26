@@ -1483,6 +1483,11 @@ hr {
   color: var(--color-muted);
 }
 
+/* display:flex above would otherwise override the hidden attribute */
+.rain-forecast-legend[hidden] {
+  display: none;
+}
+
 .rain-legend-label {
   font-weight: 600;
 }

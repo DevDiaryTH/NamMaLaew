@@ -18,16 +18,6 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
-  function fmtTime(isoStr) {
-    if (!isoStr) return "";
-    try {
-      var d = new Date(isoStr);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } catch (e) {
-      return isoStr;
-    }
-  }
-
   // sqrt scale for forecast cell opacity; saturates at 5 mm/h
   function forecastOpacity(mm) {
     if (!mm || mm <= 0) return 0;
@@ -341,12 +331,11 @@
         if (map) map.fitBounds(siteCircle.getBounds());
       }
 
-      // In forecast mode: invalidate cached data and refetch for new radius
-      if (currentMode !== "radar") {
-        forecastData = null;
-        clearForecastGrid();
-        loadForecast();
-      }
+      // The cached grid belongs to the old radius, so drop it in every mode;
+      // otherwise switching to +N later would draw it inside the new circle.
+      forecastData = null;
+      clearForecastGrid();
+      loadForecast();
     });
   });
 

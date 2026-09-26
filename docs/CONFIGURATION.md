@@ -40,7 +40,7 @@ The tile shows a full-width Leaflet map with an OpenStreetMap base layer and a t
 
 **+1 ชม. / +2 ชม. / +3 ชม.** — draws an Open-Meteo model forecast on a 5 × 5 grid across the chosen radius (10, 25, or 50 km). Each grid point is one hourly forecast cell; fill opacity scales with rainfall intensity (sqrt scale, saturating at 5 mm/h). The footer shows the forecast window in local time and credits the model. Buttons for hours not yet returned by the API are disabled automatically.
 
-Forecast data is fetched from `GET /api/rain-forecast?radius=<km>` and cached server-side for 30 minutes. Each 5 × 5 = 25 grid points counts as 25 Open-Meteo API calls per refresh; the free tier allows 10,000 calls per day.
+Forecast data is fetched from `GET /api/rain-forecast?radius=<km>` and cached server-side for 30 minutes per radius. Open-Meteo counts each of the 25 grid points as one API call, so one refresh costs 25 calls (free tier: 10,000 calls per day).
 
 **External requests made by the browser:** `tile.openstreetmap.org` (map tiles), `api.rainviewer.com` + `tilecache.rainviewer.com` (radar tiles). Forecast data is fetched from the local `/api/rain-forecast` endpoint, which in turn queries `api.open-meteo.com`.
 
