@@ -30,7 +30,7 @@ from wlm import settings as wlm_settings
 from wlm import lines as wlm_lines
 from wlm.capture import parse_cam_streams
 from web import metrics as web_metrics
-from wlm.rain_around import get_rain_around, ALLOWED_RADII
+from wlm.rain_forecast import get_rain_forecast, ALLOWED_RADII
 
 logger = logging.getLogger("web.app")
 
@@ -924,18 +924,18 @@ async def api_series(request: Request, range: str = "24h", _=Depends(require_aut
     return data
 
 
-@app.get("/api/rain-around")
-def api_rain_around(request: Request, radius: int = 25, _=Depends(require_auth)):
+@app.get("/api/rain-forecast")
+def api_rain_forecast(request: Request, radius: int = 25, _=Depends(require_auth)):
     # Plain def: FastAPI runs it in a worker thread, so the blocking HTTP call
     # to Open-Meteo doesn't stall the event loop.
     if radius not in ALLOWED_RADII:
         raise HTTPException(status_code=400, detail=f"radius must be one of {list(ALLOWED_RADII)}")
     try:
         conn = wlm_db.connect()
-        data = get_rain_around(radius_km=radius, conn=conn)
+        data = get_rain_forecast(radius_km=radius, conn=conn)
         conn.close()
     except Exception as exc:
-        logger.warning("rain-around fetch failed: %s", exc)
+        logger.warning("rain-forecast fetch failed: %s", exc)
         raise HTTPException(status_code=502, detail="rain data unavailable")
     if data is None:
         return {"enabled": False}
