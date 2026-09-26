@@ -53,7 +53,7 @@
     ('Monitor', ['capture_interval_minutes','level_warning','level_critical','claude_model','reference_description']),
     ('Location', ['latitude','longitude']),
     ('Siren (MQTT)', ['siren_enabled','mqtt_host','mqtt_port','mqtt_username','mqtt_password','siren_topic','siren_seconds','siren_on_warning']),
-    ('Learning', ['learning_max_examples']),
+    ('Learning', ['learning_max_examples','learning_use_history','alert_on_forecast']),
   ] %}
 
   {% for group_name, keys in groups %}
