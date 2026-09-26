@@ -94,6 +94,11 @@ SPECS: list[SettingSpec] = [
                 hint="Uses the rain-to-water response learned from this site's history (needs "
                      "latitude/longitude and at least 20 past rain events). Sends at most one "
                      "Telegram message every 3 hours."),
+    SettingSpec("min_confidence", None, "0.5", "float",
+                "Force a re-check before a CRITICAL alert when calibrated confidence is below this (0 = off)",
+                hint="When the calibrated confidence of a CRITICAL reading is below this threshold, "
+                     "the alert enters the same pending/re-check path as critical_confirm — even when "
+                     "critical_confirm is off. Set to 0 to disable. Range: 0.0–1.0."),
 ]
 
 SPEC_BY_KEY = {s.key: s for s in SPECS}

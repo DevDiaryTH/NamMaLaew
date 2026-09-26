@@ -22,7 +22,10 @@
         </span>
       </div>
       <div class="metric-row"><span class="metric-label">LEVEL INDEX:</span><span class="metric-value" style="font-variant-numeric:tabular-nums">{{ "%.1f"|format(reading.level_index) if reading.level_index is not none else "—" }}</span></div>
-      <div class="metric-row"><span class="metric-label">CONFIDENCE:</span><span class="metric-value">{{ "%.0f"|format(reading.confidence * 100) if reading.confidence is not none else "—" }}%</span></div>
+      <div class="metric-row"><span class="metric-label">CONFIDENCE (RAW):</span><span class="metric-value">{{ "%.0f"|format(reading.confidence * 100) if reading.confidence is not none else "—" }}%</span></div>
+      {% if reading.calibrated_confidence is defined and reading.calibrated_confidence is not none %}
+      <div class="metric-row"><span class="metric-label">CONFIDENCE (CALIBRATED):</span><span class="metric-value">{{ "%.0f"|format(reading.calibrated_confidence * 100) }}%</span></div>
+      {% endif %}
       {% if reading.description %}
         <div class="metric-row metric-row--stack"><span class="metric-label">DESCRIPTION:</span><span>{{ reading.description }}</span></div>
       {% endif %}
