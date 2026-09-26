@@ -67,6 +67,10 @@ def record_feedback(
         example_dir: str | None = None
         if as_example:
             example_dir = _copy_example_images(reading_id, c)
+            if example_dir is None:
+                raise ValueError(
+                    "Cannot use this reading as an example: its snapshot images are no longer available"
+                )
         elif was_example and old_example_dir:
             _delete_example_folder(old_example_dir)
 
@@ -100,7 +104,7 @@ def record_feedback(
 def _copy_example_images(reading_id: int, c) -> str | None:
     """Copy the image(s) Claude saw for each ok lens into examples/<reading_id>/.
 
-    Returns the example_dir relative to snapshot_dir(), or None on failure.
+    Returns the example_dir relative to snapshot_dir(), or None when no image could be copied.
     """
     snap_dir = db.snapshot_dir()
     lens_rows = c.execute(
@@ -115,6 +119,7 @@ def _copy_example_images(reading_id: int, c) -> str | None:
     example_abs = snap_dir / example_rel
     example_abs.mkdir(parents=True, exist_ok=True)
 
+    copied = 0
     for lr in lens_rows:
         label = lr["label"]
         snapshot_path = lr["snapshot_path"]
@@ -134,9 +139,13 @@ def _copy_example_images(reading_id: int, c) -> str | None:
         dst = example_abs / f"{label}.jpg"
         try:
             shutil.copy2(str(src), str(dst))
+            copied += 1
         except OSError as exc:
             logger.warning("Failed to copy example image for lens %r: %s", label, exc)
 
+    if copied == 0:
+        shutil.rmtree(str(example_abs), ignore_errors=True)
+        return None
     return example_rel
 
 

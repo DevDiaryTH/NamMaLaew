@@ -427,7 +427,8 @@ async def reading_feedback(request: Request, reading_id: int):
         )
         conn.close()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        request.session["flash_error"] = f"Feedback not saved: {e}"
+        return RedirectResponse(url=f"/reading/{reading_id}", status_code=302)
     except Exception as e:
         logger.exception("Feedback save error")
         raise HTTPException(status_code=500, detail=str(e))

@@ -288,17 +288,22 @@ class TestSelectExamples:
 
     def test_missing_files_skipped(self, db_with_snap):
         conn, snap = db_with_snap
-        rid = _seed_reading(conn)
-        _seed_lens_reading(conn, rid, label="cam", snapshot_path="ghost.jpg")
-        learning.record_feedback(rid, "correct", true_status="normal", as_example=True, conn=conn)
-        # Point example_dir to a non-existent folder
-        conn.execute(
-            "UPDATE feedback SET example_dir = 'examples/9999' WHERE reading_id = ?", (rid,)
-        )
-        conn.commit()
+        rid = self._make_example(conn, snap, "normal", 10.0)
+        # The example folder disappears after it was recorded
+        import shutil
+        shutil.rmtree(snap / "examples" / str(rid))
 
         result = learning.select_examples(conn=conn, k=5)
         assert all(e["reading_id"] != rid for e in result)
+
+    def test_example_rejected_when_snapshots_gone(self, db_with_snap):
+        conn, snap = db_with_snap
+        rid = _seed_reading(conn)
+        _seed_lens_reading(conn, rid, label="cam", snapshot_path="pruned.jpg")
+        with pytest.raises(ValueError, match="no longer available"):
+            learning.record_feedback(rid, "correct", as_example=True, conn=conn)
+        assert learning.get_feedback(rid, conn=conn) is None
+        assert not (snap / "examples" / str(rid)).exists()
 
     def test_night_preference(self, db_with_snap):
         conn, snap = db_with_snap
@@ -608,7 +613,7 @@ async def test_feedback_post_404_on_unknown_reading(web_app_env):
 
 
 @pytest.mark.asyncio
-async def test_feedback_post_400_on_bad_verdict(web_app_env):
+async def test_feedback_post_bad_verdict_shows_error(web_app_env):
     client = await _authed_web_client(web_app_env)
     try:
         resp = await client.get("/reading/1")
@@ -619,7 +624,12 @@ async def test_feedback_post_400_on_bad_verdict(web_app_env):
             data={"verdict": "bogus", "csrf_token": csrf},
             follow_redirects=False,
         )
-        assert resp2.status_code == 400
+        assert resp2.status_code == 302
+        assert resp2.headers["location"] == "/reading/1"
+        page = await client.get("/reading/1")
+        assert "Feedback not saved" in page.text
+        from wlm import learning as _learning
+        assert _learning.get_feedback(1) is None
     finally:
         await client.aclose()
 
