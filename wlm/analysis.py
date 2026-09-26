@@ -116,6 +116,7 @@ def analyze_images(
     frames: list[tuple[str, Path]],
     conn=None,
     lens_lines: dict | None = None,
+    examples: list[dict] | None = None,
 ) -> tuple[dict, int, int, float | None]:
     """Analyze all lens images in one Claude Code CLI call.
 
@@ -127,6 +128,8 @@ def analyze_images(
             for lenses that have user-drawn alert lines.  Used to build per-lens
             descriptions in the prompt.  When None, falls back to the old
             no-lines behaviour.
+        examples: optional list of verified reference examples from learning.select_examples().
+            When non-empty, prepended as few-shot calibration images before the current frames.
 
     Returns (result_dict, input_tokens, output_tokens, cost_usd).
     result_dict always has level_status, level_index (clamped 0-100 or None),
@@ -150,8 +153,42 @@ def analyze_images(
     if lens_lines is None:
         lens_lines = {}
 
-    # Build content blocks: label text block (with line description) before each image
+    # Build content blocks
     content: list[dict] = []
+
+    # Prepend verified reference examples when available
+    if examples:
+        content.append({
+            "type": "text",
+            "text": (
+                "Verified reference examples from THIS site (human-confirmed ground truth). "
+                "Use them to calibrate the level_index scale and what water looks like here; "
+                "they are NOT the current scene — judge the current images on their own evidence."
+            ),
+        })
+        for i, ex in enumerate(examples, 1):
+            note_part = f", note: {ex['note']}" if ex.get("note") else ""
+            content.append({
+                "type": "text",
+                "text": (
+                    f"Example {i} — true status: {ex['true_status']}, "
+                    f"true level_index: {ex['true_level_index']}{note_part}"
+                ),
+            })
+            for label, path in ex.get("images", []):
+                image_b64 = base64.standard_b64encode(path.read_bytes()).decode()
+                content.append({"type": "text", "text": f"Example {i} lens '{label}':"})
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": image_b64,
+                    },
+                })
+        content.append({"type": "text", "text": "Current images to analyze:"})
+
+    # Current-lens blocks: label text block (with line description) before each image
     for label, path in frames:
         lines_for_lens = lens_lines.get(label, {})
         if lines_for_lens:
@@ -219,6 +256,10 @@ def analyze_images(
         "  Do not describe things unrelated to water (car colors, furniture, background scenery).\n"
     )
 
+    examples_sentence = (
+        " Use the verified reference examples above to calibrate your level_index scale for this site."
+        if examples else ""
+    )
     prompt = (
         "You are a water-level safety monitor analyzing security camera images.\n"
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
@@ -229,7 +270,7 @@ def analyze_images(
         + lines_section
         + low_light_section
         + output_style_section
-        + "\nAnalyze all provided images together and return a JSON object matching the schema exactly."
+        + f"\nAnalyze all provided images together and return a JSON object matching the schema exactly.{examples_sentence}"
     )
     content.append({"type": "text", "text": prompt})
 

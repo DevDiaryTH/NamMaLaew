@@ -77,6 +77,11 @@ SPECS: list[SettingSpec] = [
                 "Require a second CRITICAL reading before critical alerts"),
     SettingSpec("critical_confirm_recheck_seconds", None, "120", "int",
                 "Seconds before re-checking an unconfirmed CRITICAL"),
+    # --- Learning (human feedback / few-shot examples) ---
+    SettingSpec("learning_max_examples", None, "3", "int",
+                "Max reference examples sent to Claude per analysis (0 = off)",
+                hint="Verified examples from this site are prepended to each Claude call as "
+                     "few-shot calibration images.  0 disables the feature; max 6."),
 ]
 
 SPEC_BY_KEY = {s.key: s for s in SPECS}

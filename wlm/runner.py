@@ -170,13 +170,24 @@ def run_cycle(
         analysis_start = time.monotonic()
         model = settings.get("claude_model", conn=conn)
 
+        # Determine if any captured lens looks like night mode
+        any_night = any(bool(ld.get("is_night")) for ld in lens_data if ld.get("ok"))
+
+        # Load verified reference examples for few-shot calibration
+        from wlm import learning as wlm_learning
+        try:
+            examples = wlm_learning.select_examples(conn=conn, current_is_night=any_night)
+        except Exception as exc:
+            logger.warning("Failed to load learning examples: %s", exc)
+            examples = []
+
         if overlay_frames:
             result, input_tokens, output_tokens, cost_usd = analyze_images(
-                overlay_frames, conn=conn, lens_lines=all_lines
+                overlay_frames, conn=conn, lens_lines=all_lines, examples=examples or None
             )
         elif frames:
             result, input_tokens, output_tokens, cost_usd = analyze_images(
-                frames, conn=conn, lens_lines=all_lines
+                frames, conn=conn, lens_lines=all_lines, examples=examples or None
             )
         else:
             from wlm.analysis import _unknown_result

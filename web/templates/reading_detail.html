@@ -59,6 +59,95 @@
   {% endif %}
 </div>
 
+{% if flash %}
+  <div class="alert alert-success">{{ flash }}</div>
+{% endif %}
+{% if flash_error %}
+  <div class="alert alert-error">{{ flash_error }}</div>
+{% endif %}
+
+<div class="poster-block">
+  <h3>◆ FEEDBACK</h3>
+  {% if feedback %}
+  <div style="margin-bottom:var(--space-md);">
+    <div class="metric-row">
+      <span class="metric-label">VERDICT:</span>
+      <span class="status-sticker {% if feedback.verdict == 'correct' %}status-normal{% else %}status-warning{% endif %}">
+        {{ "CORRECT" if feedback.verdict == "correct" else "WRONG" }}
+      </span>
+    </div>
+    {% if feedback.true_status %}
+    <div class="metric-row">
+      <span class="metric-label">TRUE STATUS:</span>
+      <span class="status-sticker status-{{ feedback.true_status }}">{{ feedback.true_status | upper }}</span>
+    </div>
+    {% endif %}
+    {% if feedback.true_level_index is not none %}
+    <div class="metric-row"><span class="metric-label">TRUE LEVEL:</span><span class="metric-value">{{ "%.1f"|format(feedback.true_level_index) }}</span></div>
+    {% endif %}
+    {% if feedback.note %}<div class="metric-row metric-row--stack"><span class="metric-label">NOTE:</span><span>{{ feedback.note }}</span></div>{% endif %}
+    <div class="metric-row">
+      <span class="metric-label">REFERENCE EXAMPLE:</span>
+      <span>{{ "YES" if feedback.is_example else "NO" }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/reading/{{ reading.id }}/feedback">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="settings-row">
+      <div class="settings-label-area"><label>VERDICT</label></div>
+      <div class="settings-input-area">
+        <label style="margin-right:var(--space-md);">
+          <input type="radio" name="verdict" value="correct" {% if feedback and feedback.verdict == 'correct' %}checked{% elif not feedback %}checked{% endif %} /> CORRECT
+        </label>
+        <label>
+          <input type="radio" name="verdict" value="wrong" {% if feedback and feedback.verdict == 'wrong' %}checked{% endif %} /> WRONG
+        </label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label-area"><label for="fb_true_status">TRUE STATUS</label></div>
+      <div class="settings-input-area">
+        <select id="fb_true_status" name="true_status" class="form-control">
+          <option value="">— same as reading —</option>
+          {% for s in ['normal', 'warning', 'critical'] %}
+          <option value="{{ s }}" {% if feedback and feedback.true_status == s %}selected{% endif %}>{{ s | upper }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label-area"><label for="fb_true_level">TRUE LEVEL INDEX (0-100)</label></div>
+      <div class="settings-input-area">
+        <input type="number" id="fb_true_level" name="true_level_index" min="0" max="100" step="0.1"
+               value="{{ "%.1f"|format(feedback.true_level_index) if feedback and feedback.true_level_index is not none else '' }}"
+               class="form-control" placeholder="optional" />
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label-area"><label for="fb_note">NOTE</label></div>
+      <div class="settings-input-area">
+        <input type="text" id="fb_note" name="note" value="{{ feedback.note or '' if feedback else '' }}"
+               class="form-control" placeholder="optional" maxlength="200" />
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label-area"><label for="fb_example">USE AS REFERENCE EXAMPLE</label></div>
+      <div class="settings-input-area">
+        <label class="toggle">
+          <input type="checkbox" id="fb_example" name="as_example" value="1"
+                 {% if feedback and feedback.is_example %}checked{% endif %} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">SAVE FEEDBACK</button>
+    </div>
+  </form>
+</div>
+
 {% if reading.lenses %}
 <div class="poster-block">
   <h3>◆ PER-LENS DATA</h3>

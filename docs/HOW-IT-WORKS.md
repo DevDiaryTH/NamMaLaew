@@ -87,3 +87,18 @@ Measured in production: ~6,000 input + ~1,000 output tokens per cycle, ~14 secon
 At a 10-minute interval = 144 cycles/day ≈ $0.02 API-equivalent per cycle (model `sonnet`).
 
 Switch to `haiku` or increase `capture_interval_minutes` to reduce quota usage.
+
+## Human feedback and few-shot learning
+
+After each reading you can open its detail page and leave feedback: mark it **correct** (Claude got it right) or **wrong** (providing the true status and level index). Optionally tick **Use as reference example** to promote the reading's image(s) to a persistent reference set stored under `snapshots/examples/<reading_id>/`.
+
+When examples are present, the runner prepends them to every Claude call as verified ground-truth images:
+
+1. A text preamble explains that these are human-confirmed examples from the same site.
+2. Each example appears as a label block + its image(s).
+3. A "Current images to analyze:" separator precedes the live frames.
+4. One sentence at the end of the prompt tells Claude to use the examples for scale calibration.
+
+The `learning_max_examples` setting (default 3) controls how many examples are sent. Selection picks one example per status level (critical → warning → normal), preferring the same day/night mode as the current capture, then fills remaining slots with the newest examples. Setting `learning_max_examples` to 0 disables the feature entirely.
+
+Reference examples survive `prune_snapshots()` because pruning only removes JPEG files directly in `snapshots/` (non-recursive), while examples are stored in `snapshots/examples/<id>/`.
