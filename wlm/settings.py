@@ -18,6 +18,8 @@ class SettingSpec:
     default: str
     kind: str  # "str" | "int" | "float" | "bool" | "secret" | "text"
     label: str
+    hint: str = ""     # shown on the Settings page behind an "i" button
+    example: str = ""  # shown under the hint
 
 
 DEFAULT_REFERENCE_DESCRIPTION = (
@@ -33,17 +35,33 @@ SPECS: list[SettingSpec] = [
     SettingSpec("alert_on_warning", None, "1", "bool", "Alert when entering warning"),
     SettingSpec("alert_on_recovery", None, "1", "bool", "Alert when back to normal"),
     SettingSpec("alert_on_failure", None, "1", "bool", "Alert after repeated camera/analysis failures"),
-    SettingSpec("failure_threshold", None, "3", "int", "Consecutive failures before failure alert"),
+    SettingSpec("failure_threshold", None, "3", "int", "Consecutive failures before failure alert",
+                hint="Also counts checks where one camera is down, or where Claude can't see "
+                     "the water edge at the red line (e.g. at night)."),
     SettingSpec("critical_repeat_minutes", None, "10", "int", "Repeat critical alert at most every N minutes"),
     SettingSpec("heartbeat_hour", "HEARTBEAT_HOUR", "", "str", "Daily 'alive' message hour (0-23, blank = off)"),
-    SettingSpec("capture_interval_minutes", None, "10", "int", "Minutes between snapshots"),
-    SettingSpec("level_warning", None, "50", "float", "level_index at or above = warning"),
-    SettingSpec("level_critical", None, "90", "float", "level_index at or above = critical"),
+    SettingSpec("capture_interval_minutes", None, "10", "int", "Minutes between snapshots",
+                hint="Each check is one Claude call. Shorter catches rising water sooner but "
+                     "uses more of your Claude quota."),
+    SettingSpec("level_warning", None, "50", "float", "level_index at or above = warning",
+                hint="Water reaching an amber line also raises WARNING, whatever this number is."),
+    SettingSpec("level_critical", None, "90", "float", "level_index at or above = critical",
+                hint="Only decides CRITICAL when no red line is drawn. With a red line, water "
+                     "must reach the line; this number alone can only raise WARNING."),
     SettingSpec("reference_description", "REFERENCE_DESCRIPTION", DEFAULT_REFERENCE_DESCRIPTION, "text",
-                "What normal / warning / critical look like in the frames"),
+                "What normal / warning / critical look like in the frames",
+                hint="Describe your site in plain English: name each lens by its label, say which "
+                     "lens decides CRITICAL, and what 0 / 50 / 100 look like there. Point at "
+                     "landmarks Claude can see (a gate, a step, sandbags), not objects that move, "
+                     "like a car.",
+                example="'yard' shows the lawn outside the back door (trend only). 'door' shows "
+                        "the back step and decides critical; the red line is on the top of the "
+                        "step. 0 = lawn dry; 50 = water covers the lawn; 100 = water at the red line."),
     SettingSpec("claude_model", "CLAUDE_MODEL", "sonnet", "str",
-                "Claude model (CLI alias: sonnet / opus / haiku, or full model id)"),
-    SettingSpec("latitude", "LATITUDE", "", "str", "Latitude for rainfall (blank = off)"),
+                "Claude model (CLI alias: sonnet / opus / haiku, or full model id)",
+                hint="Sonnet is the default. Haiku costs less per check."),
+    SettingSpec("latitude", "LATITUDE", "", "str", "Latitude for rainfall (blank = off)",
+                hint="Your site's coordinates, for the rainfall chart only. They don't change alerts."),
     SettingSpec("longitude", "LONGITUDE", "", "str", "Longitude for rainfall (blank = off)"),
     # --- Siren (MQTT) ---
     SettingSpec("siren_enabled", None, "0", "bool", "Sound the MQTT siren on alerts"),

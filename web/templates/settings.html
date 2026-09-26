@@ -13,6 +13,37 @@
   <div class="alert alert-error">{{ flash_error }}</div>
 {% endif %}
 
+{% macro setup_chip(step) -%}
+  {% if setup and setup.steps[step] %}<span class="setup-chip {{ 'ok' if setup.steps[step].ok else 'todo' }}">{{ setup.steps[step].text }}</span>{% endif %}
+{%- endmacro %}
+
+<details class="poster-block setup-block" id="setup-for-your-site">
+  <summary>
+    <h3>◆ SET UP FOR YOUR SITE</h3>
+    {% if setup %}<span class="setup-chip {{ 'ok' if setup.done == setup.total else 'todo' }}">{{ setup.done }} OF {{ setup.total }} CHECKED</span>{% endif %}
+    <span class="setup-toggle" aria-hidden="true"></span>
+  </summary>
+  <p class="setup-intro">Every site is different. The monitor only knows yours through these four things, so do them in order and check back after moving a camera.</p>
+  <ol class="setup-steps">
+    <li class="setup-step">
+      <h4>NAME EACH CAMERA {{ setup_chip('cameras') }}</h4>
+      <p>Set <code>CAM_STREAMS</code> in <code>.env</code> as <code>label=rtsp-url</code>, one per camera, comma-separated. One camera or many both work. The labels show up in alerts and the line editor. After editing, run <code>docker compose up -d</code>.</p>
+    </li>
+    <li class="setup-step">
+      <h4>DRAW THE LINES {{ setup_chip('lines') }}</h4>
+      <p>In <a href="/lines">LINE EDITOR</a>, draw a <b>red</b> line where water becomes dangerous and an <b>amber</b> line where it becomes a warning. The lens with the red line decides CRITICAL: water must reach that line. Draw it where water actually arrives from at your site.</p>
+    </li>
+    <li class="setup-step">
+      <h4>DESCRIBE YOUR SITE {{ setup_chip('description') }}</h4>
+      <p>Fill in <b>Reference description</b> below: what each lens shows, which lens decides CRITICAL, and what 0 / 50 / 100 look like at your site. Claude reads it on every check.</p>
+    </li>
+    <li class="setup-step">
+      <h4>CHECK THE REST</h4>
+      <p>Warning/critical levels (only used when no red line is drawn), your coordinates for the rainfall chart, and the check interval and model, which set how much Claude usage you spend.</p>
+    </li>
+  </ol>
+</details>
+
 <form method="POST" action="/settings" id="settings-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
@@ -60,14 +91,16 @@
                 CLEAR (REMOVE SAVED VALUE)
               </label>
               <div class="settings-hint">LEAVE BLANK TO KEEP THE EXISTING VALUE.</div>
-            {% elif spec.kind == 'text' %}
+            {% else %}
+              {% if spec.hint %}<div class="field-with-info">{% endif %}
+              {% if spec.kind == 'text' %}
               <textarea
                 id="s_{{ spec.key }}"
                 name="{{ spec.key }}"
                 class="form-control"
                 rows="4"
               >{{ val }}</textarea>
-            {% elif spec.kind in ('int', 'float') %}
+              {% elif spec.kind in ('int', 'float') %}
               <input
                 type="number"
                 id="s_{{ spec.key }}"
@@ -76,7 +109,7 @@
                 value="{{ val }}"
                 step="{% if spec.kind == 'float' %}0.1{% else %}1{% endif %}"
               />
-            {% else %}
+              {% else %}
               <input
                 type="text"
                 id="s_{{ spec.key }}"
@@ -84,6 +117,16 @@
                 class="form-control"
                 value="{{ val }}"
               />
+              {% endif %}
+              {% if spec.hint %}
+                <button type="button" class="info-btn" aria-expanded="false"
+                        aria-controls="hint-{{ spec.key }}" aria-label="About {{ spec.label }}">i</button>
+              </div>
+              <div class="hint-wrap" id="hint-{{ spec.key }}" hidden>
+                <div class="settings-hint">{{ spec.hint }}</div>
+                {% if spec.example %}<div class="setup-example">Example: <code>{{ spec.example }}</code></div>{% endif %}
+              </div>
+              {% endif %}
             {% endif %}
           </div>
         </div>
@@ -146,4 +189,17 @@
   </form>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('.info-btn').forEach(function (btn) {
+    var hint = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!hint) return;
+    btn.addEventListener('click', function () {
+      hint.hidden = !hint.hidden;
+      btn.setAttribute('aria-expanded', String(!hint.hidden));
+    });
+  });
+</script>
 {% endblock %}

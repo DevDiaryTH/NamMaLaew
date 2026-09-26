@@ -366,10 +366,11 @@ Common `unknown` causes and fixes:
 
 1. Open **http://localhost:8080** in a browser and log in.
 2. Navigate to **"LINE EDITOR"** (top menu, `/lines`).
-3. Select each lens (`street`, `carport`) and draw:
-   - A **WARNING line** (amber) — suggested: at the front gate/fence level
-   - A **CRITICAL line** (red) — suggested: at the carport floor/entry level
+3. Pick the lens that should decide CRITICAL and draw:
+   - A **CRITICAL line** (red) — where water becomes dangerous, on the side the water actually arrives from
+   - A **WARNING line** (amber) — where water becomes worth a warning
 4. Click Save for each lens.
+5. Open **SETTINGS** → **SET UP FOR YOUR SITE** and finish the checklist, including **Reference description** (what each lens shows, which lens decides CRITICAL, what 0 / 50 / 100 look like).
 
 This step requires human judgment about the physical layout visible in the snapshot.
 

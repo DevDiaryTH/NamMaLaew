@@ -15,7 +15,7 @@ Settings resolve in this order: dashboard (SQLite) → `.env` → built-in defau
 | `TELEGRAM_BOT_TOKEN` | `` | ✓ | Token from @BotFather |
 | `TELEGRAM_CHAT_ID` | `` | ✓ | Chat ID for alert delivery |
 | `HEARTBEAT_HOUR` | `` | ✓ | Hour (0–23) to send a daily "alive" message; empty = disabled |
-| `REFERENCE_DESCRIPTION` | *(built-in)* | ✓ | Scale description sent to Claude for `level_index` calibration |
+| `REFERENCE_DESCRIPTION` | *(built-in)* | ✓ | Your site in plain English: what each lens shows, which lens decides CRITICAL, what 0 / 50 / 100 look like |
 | `SNAPSHOT_RETENTION_HOURS` | `168` | — | How long to keep snapshots (168 = 7 days) |
 | `LATITUDE` | `` | ✓ | Open-Meteo latitude (empty = rainfall data disabled) |
 | `LONGITUDE` | `` | ✓ | Open-Meteo longitude |
@@ -40,15 +40,15 @@ Settings resolve in this order: dashboard (SQLite) → `.env` → built-in defau
 | `alert_on_warning` | `1` | Alert on entry to warning status |
 | `alert_on_recovery` | `1` | Alert on recovery to normal |
 | `alert_on_failure` | `1` | Alert after consecutive capture/analysis failures |
-| `failure_threshold` | `3` | Consecutive failures before a failure alert fires |
+| `failure_threshold` | `3` | Consecutive failures before a failure alert fires; also used for a single camera down |
 | `critical_repeat_minutes` | `10` | Resend critical alert at most every N minutes |
 | `critical_confirm` | `1` | Require a second CRITICAL reading before critical alerts |
 | `critical_confirm_recheck_seconds` | `120` | Seconds before re-checking an unconfirmed CRITICAL |
 | `heartbeat_hour` | `` | |
 | `capture_interval_minutes` | `10` | Minutes between captures |
 | `level_warning` | `50` | `level_index` threshold for warning status |
-| `level_critical` | `90` | `level_index` threshold for critical status |
-| `reference_description` | *(built-in)* | |
+| `level_critical` | `90` | `level_index` threshold for critical status; only used when no red line is drawn |
+| `reference_description` | *(built-in)* | Describe your site; see **SET UP FOR YOUR SITE** on the Settings page |
 | `claude_model` | `sonnet` | |
 | `latitude` | `` | |
 | `longitude` | `` | |

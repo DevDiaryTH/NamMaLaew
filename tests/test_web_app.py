@@ -868,3 +868,99 @@ async def test_timeline_line_position_badge_rendered(app_env):
         assert resp.status_code == 200
         # Some readings have line_position, so badge classes should appear
         assert "badge-lp" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Settings: "Set up for your site" checklist and per-setting hints
+# ---------------------------------------------------------------------------
+
+def _set_db_settings(db_file, values: dict) -> None:
+    from wlm import db as wlm_db
+    conn = wlm_db.connect(db_file)
+    for key, value in values.items():
+        wlm_db.set_setting(key, value, conn=conn)
+    conn.close()
+
+
+async def _get_settings_page(app_env):
+    from httpx import AsyncClient, ASGITransport
+    app = reload_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        c.cookies.update(await get_session_cookie(c))
+        return await c.get("/settings")
+
+
+@pytest.fixture
+def setup_env(app_env, monkeypatch):
+    monkeypatch.setenv("CAM_STREAMS", "street=rtsp://a,carport=rtsp://b")
+    monkeypatch.delenv("CAM_RTSP_URL", raising=False)
+    monkeypatch.delenv("REFERENCE_DESCRIPTION", raising=False)
+    return app_env
+
+
+@pytest.mark.asyncio
+async def test_setup_checklist_is_collapsed(setup_env):
+    resp = await _get_settings_page(setup_env)
+    assert resp.status_code == 200
+    m = re.search(r'<details class="poster-block setup-block"[^>]*>', resp.text)
+    assert m, "setup checklist missing"
+    assert "open" not in m.group(0)
+    assert "SET UP FOR YOUR SITE" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_setup_checklist_shows_what_is_missing(setup_env):
+    resp = await _get_settings_page(setup_env)
+    assert "2 LENSES: street, carport" in resp.text
+    assert "NO RED LINE YET" in resp.text
+    assert "STILL THE DEFAULT" in resp.text
+    assert "1 OF 3 CHECKED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_setup_checklist_all_done(setup_env):
+    import json
+    db_file, _snap = setup_env
+    _set_db_settings(db_file, {
+        "level_lines": json.dumps({"carport": {"critical": [[0.1, 0.1], [0.9, 0.9]]}}),
+        "reference_description": "Our yard and back step.",
+    })
+    resp = await _get_settings_page(setup_env)
+    assert "RED LINE ON carport" in resp.text
+    assert "CUSTOMISED" in resp.text
+    assert "3 OF 3 CHECKED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_setup_checklist_no_cameras(setup_env, monkeypatch):
+    monkeypatch.setenv("CAM_STREAMS", "")
+    resp = await _get_settings_page(setup_env)
+    assert "NO CAMERAS SET" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_setting_hint_hidden_behind_info_button(setup_env):
+    resp = await _get_settings_page(setup_env)
+    assert 'aria-controls="hint-level_critical"' in resp.text
+    m = re.search(r'<div class="hint-wrap" id="hint-level_critical"[^>]*>', resp.text)
+    assert m and "hidden" in m.group(0)
+    assert "Only decides CRITICAL when no red line is drawn" in resp.text
+    # a setting without a hint gets no button
+    assert 'aria-controls="hint-telegram_chat_id"' not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_validation_error_page_keeps_checklist(setup_env):
+    from httpx import AsyncClient, ASGITransport
+    app = reload_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        c.cookies.update(await get_session_cookie(c))
+        resp = await c.get("/settings")
+        csrf = re.search(r'name="csrf_token"\s+value="([^"]+)"', resp.text).group(1)
+        resp = await c.post("/settings", data={
+            "csrf_token": csrf, "level_warning": "90", "level_critical": "50",
+            "capture_interval_minutes": "10",
+        }, follow_redirects=False)
+    assert resp.status_code == 422
+    assert "SET UP FOR YOUR SITE" in resp.text
+    assert "OF 3 CHECKED" in resp.text

@@ -176,12 +176,14 @@ Open **http://localhost:8080** (or `http://<mac-ip>:8080` from your phone) and l
 
 ### 11. Draw alert lines
 
-Dashboard → **LINE EDITOR** (top menu) → draw on each lens (`street`, `carport`) → Save.
+Dashboard → **LINE EDITOR** (top menu) → pick a lens → draw → Save.
 
-- **WARNING** (amber): e.g. the front gate or fence
-- **CRITICAL** (red): e.g. the carport floor
+- **CRITICAL** (red): where water becomes dangerous at your site. The lens with the red line decides CRITICAL, so draw it where the water actually arrives from.
+- **WARNING** (amber): where water becomes worth a warning.
 
-✅ `/lines` shows your lines on both snapshots.
+Then open **SETTINGS** → **SET UP FOR YOUR SITE** and work through the checklist, including describing your site in **Reference description**. Each setting's **i** button explains what it does.
+
+✅ `/lines` shows your red line, and the checklist on **SETTINGS** reads `3 OF 3 CHECKED`.
 
 ### 12. Keep the Mac awake
 
@@ -218,9 +220,11 @@ Needs zigbee2mqtt + an MQTT broker already on your LAN.
 **What triggers alerts:**
 
 - **WARNING:** `level_index` ≥ 50, or water at the amber line
-- **CRITICAL:** `level_index` ≥ 90, or water at the red line
+- **CRITICAL:** water at the red line
+  - `level_index` ≥ 90 counts only when no red line is drawn; with a red line it can only raise WARNING
   - Confirmed by a second reading ~2 min later (stops false alarms from dark or wet floors)
   - Repeats every 10 min while critical
+- **Failure:** 3 checks in a row with no result, a camera down, or the water edge not visible at the red line
 
 **After a Mac reboot:** start go2rtc again from Terminal (Step 5's command). Auto-start via launchd does not work yet, see [Known issues](docs/TROUBLESHOOTING.md#known-issues).
 
