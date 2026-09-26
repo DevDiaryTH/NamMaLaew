@@ -72,3 +72,4 @@ Forecast data is fetched from `GET /api/rain-forecast?radius=<km>` and cached se
 | `siren_on_warning` | `0` | Also sound the siren when entering WARNING |
 | `mqtt_host` / `mqtt_port` / `mqtt_username` / `mqtt_password` / `siren_topic` | see `.env` table | |
 | `learning_max_examples` | `3` | Number of verified reference examples sent to Claude per analysis (0 = off, max 6) |
+| `learning_use_history` | `1` | Send recent readings (last 2 hours, up to 6) to Claude as context so level_index stays consistent over time. Human-corrected values replace any readings marked wrong. Disable by setting to `0`. |

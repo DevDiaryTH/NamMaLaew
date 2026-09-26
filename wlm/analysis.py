@@ -117,6 +117,7 @@ def analyze_images(
     conn=None,
     lens_lines: dict | None = None,
     examples: list[dict] | None = None,
+    history_text: str | None = None,
 ) -> tuple[dict, int, int, float | None]:
     """Analyze all lens images in one Claude Code CLI call.
 
@@ -130,6 +131,9 @@ def analyze_images(
             no-lines behaviour.
         examples: optional list of verified reference examples from learning.select_examples().
             When non-empty, prepended as few-shot calibration images before the current frames.
+        history_text: optional summary of recent readings produced by learning.recent_context().
+            When given, inserted between the examples and the current images so Claude has
+            recent context; behaviour is unchanged when None.
 
     Returns (result_dict, input_tokens, output_tokens, cost_usd).
     result_dict always has level_status, level_index (clamped 0-100 or None),
@@ -186,6 +190,16 @@ def analyze_images(
                         "data": image_b64,
                     },
                 })
+
+    # Recent-history context block (between examples and current images)
+    if history_text:
+        content.append({
+            "type": "text",
+            "text": "Recent readings at this site (context only):\n" + history_text,
+        })
+
+    # Separator appears whenever the model has seen examples or history
+    if examples or history_text:
         content.append({"type": "text", "text": "Current images to analyze:"})
 
     # Current-lens blocks: label text block (with line description) before each image
@@ -260,6 +274,14 @@ def analyze_images(
         " Use the verified reference examples above to calibrate your level_index scale for this site."
         if examples else ""
     )
+    history_paragraph = (
+        "\nRecent history: water levels usually change gradually between readings. "
+        "Judge the current images FIRST on their own visual evidence; use the recent readings "
+        "above only as a soft prior. Do not copy previous values: if the images clearly show a "
+        "change, report it even if it is large; if the evidence is ambiguous, a result close to "
+        "the recent trend is more likely than a sudden jump.\n"
+        if history_text else ""
+    )
     prompt = (
         "You are a water-level safety monitor analyzing security camera images.\n"
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
@@ -270,6 +292,7 @@ def analyze_images(
         + lines_section
         + low_light_section
         + output_style_section
+        + history_paragraph
         + f"\nAnalyze all provided images together and return a JSON object matching the schema exactly.{examples_sentence}"
     )
     content.append({"type": "text", "text": prompt})

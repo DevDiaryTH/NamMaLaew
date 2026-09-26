@@ -82,6 +82,12 @@ SPECS: list[SettingSpec] = [
                 "Max reference examples sent to Claude per analysis (0 = off)",
                 hint="Verified examples from this site are prepended to each Claude call as "
                      "few-shot calibration images.  0 disables the feature; max 6."),
+    SettingSpec("learning_use_history", None, "1", "bool",
+                "Send recent readings to Claude as context",
+                hint="When on, the last few readings (within 2 hours) are summarised and sent "
+                     "to Claude before the current images. Claude uses them as a soft prior — "
+                     "it will still report a sudden change when the images show one — which "
+                     "helps keep level_index consistent across consecutive checks."),
 ]
 
 SPEC_BY_KEY = {s.key: s for s in SPECS}

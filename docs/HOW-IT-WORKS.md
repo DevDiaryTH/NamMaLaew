@@ -102,3 +102,24 @@ When examples are present, the runner prepends them to every Claude call as veri
 The `learning_max_examples` setting (default 3) controls how many examples are sent. Selection picks one example per status level (critical → warning → normal), preferring the same day/night mode as the current capture, then fills remaining slots with the newest examples. Setting `learning_max_examples` to 0 disables the feature entirely.
 
 Reference examples survive `prune_snapshots()` because pruning only removes JPEG files directly in `snapshots/` (non-recursive), while examples are stored in `snapshots/examples/<id>/`.
+
+### Recent-history context
+
+When `learning_use_history` is enabled (default on), the runner adds a short text summary of the last few readings to each Claude call. The summary covers readings from the past 2 hours (up to 6, excluding `unknown`), listed chronologically with time, status, level index, and confidence. If a reading has feedback, the summary uses the human-corrected or human-confirmed values instead and marks them accordingly.
+
+A "Rain in last 3h" line is appended when weather precipitation data is available for the site.
+
+The history block appears in the Claude prompt between the reference examples and the current images:
+
+```
+[Reference examples (if any)]
+Recent readings at this site (context only):
+  HH:MM UTC (-Xm ago)  status=...  level=...  conf=...%
+  ...
+Rain in last 3h: X.X mm  (if weather data present)
+Current images to analyze:
+[Current lens images]
+[Analysis prompt — includes a paragraph asking Claude to treat the history as a soft prior]
+```
+
+Claude is explicitly instructed to judge each set of images on their own visual evidence first, and to use the history only as a prior: a clear change in the images should be reported even if it is large; history only nudges the result when the image evidence is ambiguous. Set `learning_use_history` to `0` to disable.
