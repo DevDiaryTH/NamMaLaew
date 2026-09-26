@@ -18,7 +18,7 @@
 
   {% set groups = [
     ('Telegram', ['telegram_enabled','telegram_bot_token','telegram_chat_id']),
-    ('Alert Policy', ['alert_on_warning','alert_on_recovery','alert_on_failure','failure_threshold','critical_repeat_minutes','heartbeat_hour']),
+    ('Alert Policy', ['alert_on_warning','alert_on_recovery','alert_on_failure','failure_threshold','critical_repeat_minutes','critical_confirm','critical_confirm_recheck_seconds','heartbeat_hour']),
     ('Monitor', ['capture_interval_minutes','level_warning','level_critical','claude_model','reference_description']),
     ('Location', ['latitude','longitude']),
     ('Siren (MQTT)', ['siren_enabled','mqtt_host','mqtt_port','mqtt_username','mqtt_password','siren_topic','siren_seconds','siren_on_warning']),

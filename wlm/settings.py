@@ -56,6 +56,11 @@ SPECS: list[SettingSpec] = [
     SettingSpec("siren_topic", "SIREN_TOPIC", "zigbee2mqtt/Siren/set", "str", "MQTT topic for the siren"),
     SettingSpec("siren_seconds", None, "60", "int", "Seconds the siren sounds before it is switched off"),
     SettingSpec("siren_on_warning", None, "0", "bool", "Also sound the siren when entering WARNING"),
+    # --- Critical confirmation ---
+    SettingSpec("critical_confirm", None, "1", "bool",
+                "Require a second CRITICAL reading before critical alerts"),
+    SettingSpec("critical_confirm_recheck_seconds", None, "120", "int",
+                "Seconds before re-checking an unconfirmed CRITICAL"),
 ]
 
 SPEC_BY_KEY = {s.key: s for s in SPECS}

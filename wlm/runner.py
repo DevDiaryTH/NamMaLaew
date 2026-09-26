@@ -16,7 +16,7 @@ import logging
 import logging.handlers
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -277,12 +277,14 @@ def run_cycle(
 
 
 def _should_run_now(last_run_ts: float, conn=None) -> bool:
-    """Return True if it's time to run a cycle based on interval or run_now_requested."""
+    """Return True if it's time for a cycle: interval elapsed, run_now requested, or recheck due."""
     interval_minutes = settings.get_int("capture_interval_minutes", conn=conn)
     interval_seconds = interval_minutes * 60
     elapsed = time.monotonic() - last_run_ts
 
     if _run_now_requested(conn=conn):
+        return True
+    if _recheck_due(conn=conn):
         return True
     return elapsed >= interval_seconds
 
@@ -295,6 +297,24 @@ def _run_now_requested(conn=None) -> bool:
 
 def _clear_run_now(conn=None) -> None:
     db.set_state("run_now_requested", "", conn=conn)
+
+
+def _recheck_due(conn=None) -> bool:
+    """Return True if a critical re-check has been scheduled and the time has arrived."""
+    recheck_at_str = db.get_state("recheck_at", default="", conn=conn) or ""
+    if not recheck_at_str:
+        return False
+    try:
+        recheck_at = datetime.fromisoformat(recheck_at_str)
+        if recheck_at.tzinfo is None:
+            recheck_at = recheck_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) >= recheck_at
+    except (ValueError, TypeError):
+        return False
+
+
+def _clear_recheck_at(conn=None) -> None:
+    db.set_state("recheck_at", "", conn=conn)
 
 
 def _test_telegram() -> None:
@@ -399,6 +419,8 @@ def main() -> None:
                 if should:
                     if _run_now_requested(conn=tmp_conn):
                         _clear_run_now(conn=tmp_conn)
+                    if _recheck_due(conn=tmp_conn):
+                        _clear_recheck_at(conn=tmp_conn)
                 tmp_conn.close()
 
                 if should:

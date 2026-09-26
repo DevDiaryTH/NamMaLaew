@@ -166,6 +166,17 @@ def analyze_images(
         "When a lens image has no lines, always set line_position to 'no_lines'.\n"
     )
 
+    low_light_section = (
+        "Low light and reflections:\n"
+        "  A dark, shiny or wet-looking floor is NOT standing water unless there is a visible\n"
+        "  water edge/waterline, ripples, or objects reflected in a continuous water surface.\n"
+        "  Tiles, painted concrete and car reflections at dawn/dusk or under IR illumination\n"
+        "  often appear wet or flooded; do not classify them as standing water on appearance\n"
+        "  alone.  When the water edge relative to a drawn line cannot be judged with\n"
+        "  confidence, use line_position 'not_visible' rather than guessing.\n"
+        "  Do not infer carport flooding from the street lens alone.\n"
+    )
+
     prompt = (
         "You are a water-level safety monitor analyzing security camera images.\n"
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
@@ -174,6 +185,7 @@ def analyze_images(
         "level_index scale: 0=completely dry (no water anywhere), 100=maximum flooding (water covers carport floor / car wheels).\n\n"
         "For each lens, estimate water_coverage_pct = percentage of the visible ground area in that lens covered by standing water (0-100).\n\n"
         + lines_section
+        + low_light_section
         + "\nAnalyze all provided images together and return a JSON object matching the schema exactly."
     )
     content.append({"type": "text", "text": prompt})

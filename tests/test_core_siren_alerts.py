@@ -36,6 +36,8 @@ class TestSirenAlerts:
         db.set_setting("mqtt_host", "mqtt.local", conn=tmp_db)
         db.set_setting("siren_seconds", "60", conn=tmp_db)
         db.set_setting("telegram_enabled", "0", conn=tmp_db)
+        # System already in confirmed critical state — no re-confirmation needed.
+        db.set_state("last_status", "critical", conn=tmp_db)
 
         with patch("wlm.alerts.siren.sound") as mock_sound:
             mock_sound.return_value = (True, None)
@@ -55,9 +57,10 @@ class TestSirenAlerts:
         db.set_setting("critical_repeat_minutes", "10", conn=tmp_db)
         db.set_setting("telegram_enabled", "0", conn=tmp_db)
 
-        # Simulate a recent critical alert
+        # Simulate a recent critical alert (already in confirmed critical state)
         recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(timespec="seconds")
         db.set_state("last_critical_alert_ts", recent_ts, conn=tmp_db)
+        db.set_state("last_status", "critical", conn=tmp_db)
 
         with patch("wlm.alerts.siren.sound") as mock_sound:
             mock_sound.return_value = (True, None)
@@ -139,6 +142,8 @@ class TestSirenAlerts:
         db.set_setting("siren_enabled", "1", conn=tmp_db)
         db.set_setting("mqtt_host", "mqtt.local", conn=tmp_db)
         db.set_setting("telegram_enabled", "0", conn=tmp_db)
+        # System already in confirmed critical state so the siren path is exercised.
+        db.set_state("last_status", "critical", conn=tmp_db)
 
         with patch("wlm.alerts.siren.sound") as mock_sound:
             mock_sound.return_value = (True, None)
@@ -160,6 +165,8 @@ class TestSirenAlerts:
         db.set_setting("telegram_enabled", "1", conn=tmp_db)
         db.set_setting("telegram_bot_token", "tok", conn=tmp_db)
         db.set_setting("telegram_chat_id", "123", conn=tmp_db)
+        # System already in confirmed critical state so the siren path is exercised.
+        db.set_state("last_status", "critical", conn=tmp_db)
 
         with patch("wlm.alerts.siren.sound", side_effect=RuntimeError("boom")), \
              patch("wlm.alerts.tg.send_message") as mock_tg:

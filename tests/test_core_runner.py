@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 
 from wlm import db
-from wlm.runner import run_cycle, _should_run_now
+from wlm.runner import run_cycle, _should_run_now, _recheck_due, _clear_recheck_at
 
 
 def _make_image(path: Path) -> None:
@@ -179,3 +179,34 @@ class TestRunNowRequested:
         # Use a timestamp well in the past (10000 seconds ago) to ensure elapsed > 600
         last_run = time.monotonic() - 10000
         assert _should_run_now(last_run, conn=tmp_db) is True
+
+    def test_due_recheck_at_triggers_run_and_is_cleared(self, tmp_db):
+        """A recheck_at in the past makes _should_run_now return True; clear removes it."""
+        from datetime import datetime, timezone, timedelta
+        db.set_setting("capture_interval_minutes", "10", conn=tmp_db)
+        db.set_state("run_now_requested", "0", conn=tmp_db)
+        # Set recheck_at to 10 seconds ago (due)
+        past_ts = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat(timespec="seconds")
+        db.set_state("recheck_at", past_ts, conn=tmp_db)
+        last_run = time.monotonic() - 30  # interval not elapsed
+
+        assert _recheck_due(conn=tmp_db) is True
+        assert _should_run_now(last_run, conn=tmp_db) is True
+
+        # Clearing recheck_at removes the trigger
+        _clear_recheck_at(conn=tmp_db)
+        assert _recheck_due(conn=tmp_db) is False
+        assert _should_run_now(last_run, conn=tmp_db) is False
+
+    def test_not_due_recheck_at_does_not_trigger(self, tmp_db):
+        """A recheck_at in the future does not trigger a run early."""
+        from datetime import datetime, timezone, timedelta
+        db.set_setting("capture_interval_minutes", "10", conn=tmp_db)
+        db.set_state("run_now_requested", "0", conn=tmp_db)
+        # Set recheck_at to 60 seconds in the future (not yet due)
+        future_ts = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(timespec="seconds")
+        db.set_state("recheck_at", future_ts, conn=tmp_db)
+        last_run = time.monotonic() - 30  # interval not elapsed
+
+        assert _recheck_due(conn=tmp_db) is False
+        assert _should_run_now(last_run, conn=tmp_db) is False

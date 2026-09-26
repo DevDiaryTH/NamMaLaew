@@ -496,6 +496,8 @@ cat logs/go2rtc.log                 # go2rtc (if launched via launchd)
 | `alert_on_failure` | `1` | Alert after consecutive capture/analysis failures |
 | `failure_threshold` | `3` | Consecutive failures before a failure alert fires |
 | `critical_repeat_minutes` | `10` | Resend critical alert at most every N minutes |
+| `critical_confirm` | `1` | Require a second CRITICAL reading before critical alerts |
+| `critical_confirm_recheck_seconds` | `120` | Seconds before re-checking an unconfirmed CRITICAL |
 | `heartbeat_hour` | `` | |
 | `capture_interval_minutes` | `10` | Minutes between captures |
 | `level_warning` | `50` | `level_index` threshold for warning status |
@@ -552,6 +554,7 @@ cat logs/go2rtc.log                 # go2rtc (if launched via launchd)
 
 - `level_warning` (default 50): alert fires when `level_index` ≥ this value
 - `level_critical` (default 90): critical alert + repeat every `critical_repeat_minutes` minutes
+- When `critical_confirm` is on (default), the first CRITICAL reading schedules a re-check after `critical_confirm_recheck_seconds` (default 120 s) instead of alerting immediately; only a second consecutive CRITICAL sounds the siren and sends the Telegram message. A "pending" row appears on the Alerts page. If the re-check returns a lower status, the alarm is silently cancelled.
 
 ### Alert lines and `line_position`
 

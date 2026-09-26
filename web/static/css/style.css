@@ -851,6 +851,7 @@ textarea.form-control { min-height: 100px; resize: vertical; }
 .kind-failure  { background: var(--color-status-critical); color: var(--color-status-critical-ink); }
 .kind-heartbeat, .kind-test { background: var(--color-paper-3); color: var(--color-ink); }
 .kind-siren { background: var(--color-ink-2); color: var(--color-paper-3); }
+.kind-pending { background: var(--color-paper-3); color: var(--color-ink-2); }
 
 /* Line position badges */
 .badge-line-pos {

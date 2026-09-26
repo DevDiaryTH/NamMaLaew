@@ -6,6 +6,14 @@ State keys in runtime_state:
   failure_alert_sent     - "1" | "0"
   last_critical_alert_ts - ISO timestamp of last critical alert (or "")
   last_heartbeat_date    - YYYY-MM-DD string or ""
+  critical_pending       - ISO UTC timestamp of the first unconfirmed CRITICAL reading,
+                           or "" when no confirmation is pending.  Set only when
+                           critical_confirm is on.  last_status is NOT updated to
+                           "critical" while a confirmation is pending, so that a
+                           warning→pending→recovery sequence still fires a recovery alert.
+  recheck_at             - ISO UTC timestamp after which the runner should run a cycle
+                           immediately (to re-check an unconfirmed critical).  "" when
+                           no recheck is scheduled.
 """
 
 from __future__ import annotations
@@ -148,6 +156,11 @@ def process_alerts(
 
     unknown does NOT overwrite last_status so that warning→unknown→normal
     still fires a recovery alert.
+
+    When critical_confirm is on, the first CRITICAL reading enters a pending
+    state (no Telegram, no siren) and schedules a re-check via recheck_at.
+    Only a second consecutive CRITICAL sounds the siren and sends the alert.
+    last_status is never set to "critical" for a pending (unconfirmed) reading.
     """
     ts = _now_ts()
     now = datetime.now(timezone.utc)
@@ -156,6 +169,8 @@ def process_alerts(
     consecutive = _get_state_int("consecutive_failures", conn=conn)
     failure_alert_sent = db.get_state("failure_alert_sent", default="0", conn=conn) == "1"
     last_critical_ts_str = db.get_state("last_critical_alert_ts", default="", conn=conn) or ""
+    # critical_pending: ISO UTC ts of first unconfirmed critical, "" when none pending
+    critical_pending = db.get_state("critical_pending", default="", conn=conn) or ""
 
     desc = result.get("estimated_level_description", "")
     reason = result.get("reason", "")
@@ -163,39 +178,93 @@ def process_alerts(
     level_index_str = f"{level_index:.1f}" if level_index is not None else "unknown"
     now_local = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # This flag prevents last_status from being set to "critical" when the reading
+    # enters pending (unconfirmed) state.
+    _skip_last_status_update = False
+
+    # ---- cancel pending critical when re-check is not critical ----
+    # Must happen before the main status branches so warning/recovery logic
+    # operates against the un-promoted last_status.
+    if final_status != "critical" and critical_pending:
+        msg = f"CRITICAL not confirmed (re-check: {final_status})"
+        if dry_run:
+            print(f"[DRY RUN] {msg}")
+        else:
+            db.insert_alert("pending", msg, delivered=False, error=None,
+                            reading_id=reading_id, conn=conn)
+            db.set_state("critical_pending", "", conn=conn)
+        logger.info("Critical pending cleared — re-check result: %s", final_status)
+
     # ---- critical alert ----
     if final_status == "critical":
-        critical_repeat = settings.get_int("critical_repeat_minutes", conn=conn)
-        should_alert = True
-        if last_critical_ts_str:
-            try:
-                last_critical_ts = datetime.fromisoformat(last_critical_ts_str)
-                # Make timezone-aware if needed
-                if last_critical_ts.tzinfo is None:
-                    last_critical_ts = last_critical_ts.replace(tzinfo=timezone.utc)
-                elapsed = (now - last_critical_ts).total_seconds() / 60
-                if elapsed < critical_repeat:
-                    should_alert = False
-                    logger.debug(
-                        "Suppressing critical repeat (%.1f min < %d min)",
-                        elapsed, critical_repeat,
-                    )
-            except (ValueError, TypeError):
-                pass
+        critical_confirm = settings.get_bool("critical_confirm", conn=conn)
 
-        if should_alert:
-            msg = (
-                f"🚨 น้ำระดับวิกฤต! (CRITICAL)\n"
-                f"level_index: {level_index_str}\n"
-                f"ระดับ: {desc}\n"
-                f"เหตุผล: {reason}\n"
-                f"เวลา: {now_local}"
+        # Enter pending when: confirm is on, no pending already, and last_status is not
+        # already "critical" (i.e. this is a fresh transition into critical, not a
+        # sustained critical state after a confirmed alert).
+        if critical_confirm and not critical_pending and last_status != "critical":
+            recheck_secs = settings.get_int("critical_confirm_recheck_seconds", conn=conn)
+            recheck_ts = (now + timedelta(seconds=recheck_secs)).isoformat(timespec="seconds")
+            pend_msg = (
+                f"CRITICAL detected — re-checking in {recheck_secs} s before alerting"
             )
-            _send_alert("critical", msg, photo_path, reading_id, dry_run, conn=conn)
-            if not dry_run:
-                db.set_state("last_critical_alert_ts", ts, conn=conn)
-            # ---- siren: critical ----
-            _sound_siren("critical", reading_id, dry_run, conn=conn)
+            if dry_run:
+                print(f"[DRY RUN] critical pending: {pend_msg}")
+                print(f"[DRY RUN] recheck_at would be set to {recheck_ts}")
+            else:
+                db.insert_alert("pending", pend_msg, delivered=False, error=None,
+                                reading_id=reading_id, conn=conn)
+                db.set_state("critical_pending", ts, conn=conn)
+                db.set_state("recheck_at", recheck_ts, conn=conn)
+            logger.info(
+                "Critical pending (confirmation required) — recheck scheduled at %s",
+                recheck_ts,
+            )
+            # Do not update last_status to "critical" for an unconfirmed reading.
+            _skip_last_status_update = True
+
+        else:
+            # Either:
+            #   a) critical_confirm is off → old behaviour
+            #   b) critical_pending is set → this is the confirmation reading
+            #   c) last_status is already "critical" → sustained critical, use repeat logic
+            if critical_confirm and critical_pending:
+                # Confirmed: clear the pending state
+                if not dry_run:
+                    db.set_state("critical_pending", "", conn=conn)
+                logger.info("Critical confirmed — clearing pending state")
+
+            critical_repeat = settings.get_int("critical_repeat_minutes", conn=conn)
+            should_alert = True
+            if last_critical_ts_str:
+                try:
+                    last_critical_ts = datetime.fromisoformat(last_critical_ts_str)
+                    # Make timezone-aware if needed
+                    if last_critical_ts.tzinfo is None:
+                        last_critical_ts = last_critical_ts.replace(tzinfo=timezone.utc)
+                    elapsed = (now - last_critical_ts).total_seconds() / 60
+                    if elapsed < critical_repeat:
+                        should_alert = False
+                        logger.debug(
+                            "Suppressing critical repeat (%.1f min < %d min)",
+                            elapsed, critical_repeat,
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+            if should_alert:
+                msg = (
+                    f"🚨 น้ำระดับวิกฤต! (CRITICAL)\n"
+                    f"level_index: {level_index_str}\n"
+                    f"ระดับ: {desc}\n"
+                    f"เหตุผล: {reason}\n"
+                    f"เวลา: {now_local}"
+                )
+                _send_alert("critical", msg, photo_path, reading_id, dry_run, conn=conn)
+                if not dry_run:
+                    db.set_state("last_critical_alert_ts", ts, conn=conn)
+                # ---- siren: critical ----
+                _sound_siren("critical", reading_id, dry_run, conn=conn)
 
     # ---- warning alert (on transition) ----
     elif final_status == "warning" and last_status != "warning":
@@ -254,8 +323,10 @@ def process_alerts(
     if dry_run:
         return
 
-    # unknown does NOT overwrite last_status
-    if final_status != "unknown":
+    # unknown does NOT overwrite last_status.
+    # A pending (unconfirmed) critical also must not overwrite last_status, so that
+    # a later warning→recovery sequence fires correctly.
+    if final_status != "unknown" and not _skip_last_status_update:
         db.set_state("last_status", final_status, conn=conn)
 
     db.set_state("consecutive_failures", str(new_consecutive), conn=conn)

@@ -296,3 +296,42 @@ class TestAnalysisErrors:
 
         assert result["level_status"] == "unknown"
         assert "structured_output" in result["reason"].lower()
+
+
+class TestAnalysisPromptContent:
+    """Verify the prompt contains required guidance."""
+
+    def setup_method(self):
+        import tempfile
+        self.tmp_dir = Path(tempfile.mkdtemp())
+        self.img = self.tmp_dir / "street.jpg"
+        _make_image(self.img)
+
+    def teardown_method(self):
+        import shutil
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _capture_prompt(self):
+        """Return the prompt text block from the stdin payload."""
+        with patch("wlm.analysis.shutil.which", return_value="/usr/bin/claude"), \
+             patch("wlm.analysis.subprocess.run") as mock_run:
+            mock_run.return_value = _make_proc_result(_good_structured())
+            analyze_images([("street", self.img)], conn=None)
+        stdin_str = mock_run.call_args.kwargs["input"]
+        msg = json.loads(stdin_str)
+        # The last content block is the prompt text
+        text_blocks = [b["text"] for b in msg["message"]["content"] if b.get("type") == "text"]
+        return "\n".join(text_blocks)
+
+    def test_prompt_contains_low_light_guidance(self):
+        """Prompt must mention reflections and the 'not_visible' fallback."""
+        prompt = self._capture_prompt()
+        assert "not standing water" in prompt.lower() or "dark, shiny" in prompt.lower()
+        assert "not_visible" in prompt
+
+    def test_prompt_mentions_all_line_positions(self):
+        """All LINE_POSITIONS values must appear in the prompt."""
+        from wlm.db import LINE_POSITIONS
+        prompt = self._capture_prompt()
+        for pos in LINE_POSITIONS:
+            assert pos in prompt, f"LINE_POSITIONS value '{pos}' missing from prompt"
