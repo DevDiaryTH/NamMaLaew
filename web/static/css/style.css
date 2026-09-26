@@ -1503,8 +1503,7 @@ hr {
   display: inline-block;
   width: 12px;
   height: 12px;
-  background: var(--color-chart-rain);
-  opacity: var(--swatch-o, 0.5);
+  background: var(--swatch-c);
   border: 1px solid var(--color-rule);
   flex-shrink: 0;
 }

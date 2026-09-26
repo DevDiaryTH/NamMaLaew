@@ -18,10 +18,17 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
-  // sqrt scale for forecast cell opacity; saturates at 5 mm/h
-  function forecastOpacity(mm) {
-    if (!mm || mm <= 0) return 0;
-    return 0.15 + 0.70 * Math.min(1, Math.sqrt(mm / 5));
+  // Hourly rain-intensity bands: very light < 1, light < 2.5, moderate < 7.6,
+  // heavy >= 7.6 mm/h. Returns 1-4 (the --color-rain-N token), or 0 for dry.
+  var BAND_LIMITS = [1, 2.5, 7.6];
+  var CELL_OPACITY = 0.55;
+
+  function rainBand(mm) {
+    if (!mm || mm < 0.1) return 0;
+    for (var i = 0; i < BAND_LIMITS.length; i++) {
+      if (mm < BAND_LIMITS[i]) return i + 1;
+    }
+    return BAND_LIMITS.length + 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -216,7 +223,6 @@
     if (!map || !data || !data.enabled || !data.cells || !data.hours) return;
     if (hourIndex >= data.hours.length) return;
 
-    var rainColor = getCSSVar("--color-chart-rain") || "#5589bb";
     var stepKm = data.step_km || 12.5;
 
     // Build window label (hours[i] is the END of the one-hour bucket)
@@ -233,7 +239,8 @@
 
     data.cells.forEach(function (cell) {
       var mm = (cell.mm && cell.mm[hourIndex] !== undefined) ? cell.mm[hourIndex] : 0;
-      if (!mm || mm <= 0) return;
+      var band = rainBand(mm);
+      if (!band) return;
 
       var rect = L.rectangle(
         [
@@ -243,8 +250,8 @@
         {
           color: "transparent",
           weight: 0,
-          fillColor: rainColor,
-          fillOpacity: forecastOpacity(mm),
+          fillColor: getCSSVar("--color-rain-" + band),
+          fillOpacity: CELL_OPACITY,
           interactive: true,
         }
       ).addTo(map);
