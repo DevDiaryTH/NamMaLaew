@@ -409,6 +409,8 @@ Also set Docker Desktop to **"Start at Login"** in its preferences.
 
 On CRITICAL the monitor publishes `{"alarm": true}`, then `{"alarm": false}` after `siren_seconds` (default 60). It repeats on the same schedule as the Telegram critical alert (`critical_repeat_minutes`). WARNING sounds it only when `siren_on_warning` is on. Recovery to normal switches it off. Every siren publish is listed on the Alerts page. Tested with a Tuya TS0216 siren; other sirens need a different payload.
 
+**Mute button:** the overview and Settings pages both show a **◆ MUTE UNTIL WATER DROPS** button. Pressing it silences the siren immediately and suppresses every future siren sound until a reading comes back below CRITICAL (normal or warning), at which point the mute is cleared automatically. Telegram alerts keep arriving throughout. You can also unmute manually with **◆ UNMUTE SIREN**. The `POST /siren/mute` endpoint sets the muted state even when the stop-publish to the MQTT broker fails, so the siren is silenced in software regardless of broker reachability.
+
 ✅ Works when: the test button makes the siren sound for 1 second and the page shows a success message.
 
 ---

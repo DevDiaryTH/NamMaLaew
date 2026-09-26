@@ -257,6 +257,7 @@ async def overview(request: Request):
         # Lets the template tell "not enough data" (<3 points) from "not rising".
         rise_rate_pts = web_metrics.count_window_points(conn)
         siren_host = bool(wlm_settings.get("mqtt_host", conn=conn))
+        siren_muted = bool(wlm_db.get_state("siren_muted", default="", conn=conn))
         conn.close()
     except Exception as e:
         logger.exception("Overview DB error")
@@ -269,6 +270,7 @@ async def overview(request: Request):
         eta = None
         rise_rate_pts = 0
         siren_host = False
+        siren_muted = False
         level_critical = 90.0
         level_warning = 50.0
 
@@ -283,6 +285,7 @@ async def overview(request: Request):
         "eta": eta,
         "rise_rate_pts": rise_rate_pts,
         "siren_host": siren_host,
+        "siren_muted": siren_muted,
         "level_critical": level_critical,
         "level_warning": level_warning,
     })
@@ -402,17 +405,20 @@ async def settings_page(request: Request):
         conn = wlm_db.connect()
         current = wlm_settings.all_settings(conn=conn)
         sources = _sources_for_settings(conn)
+        siren_muted_since = wlm_db.get_state("siren_muted", default="", conn=conn) or ""
         conn.close()
     except Exception:
         logger.exception("Settings DB error")
         current = {s.key: s.default for s in wlm_settings.SPECS}
         sources = {s.key: "default" for s in wlm_settings.SPECS}
+        siren_muted_since = ""
 
     ctx = _base_context(request)
     ctx.update({
         "specs": wlm_settings.SPECS,
         "current": current,
         "sources": sources,
+        "siren_muted_since": siren_muted_since,
         "flash": request.session.pop("flash", None),
         "flash_error": request.session.pop("flash_error", None),
     })
@@ -680,6 +686,94 @@ async def stop_siren(request: Request):
         request.session["flash"] = "Siren stopped."
     else:
         request.session["flash_error"] = f"Siren stop failed: {err}"
+    return RedirectResponse(url="/settings", status_code=302)
+
+
+# --- Mute-siren button ---
+
+@app.post("/siren/mute")
+async def mute_siren(request: Request):
+    """Mute the siren until water drops below CRITICAL. JSON for the overview button."""
+    pwd = _get_password()
+    wants_json = "application/json" in request.headers.get("accept", "")
+    if not pwd:
+        raise HTTPException(status_code=503)
+    if not _is_authenticated(request):
+        if wants_json:
+            raise HTTPException(status_code=401)
+        return _redirect_login(request)
+
+    form = await request.form()
+    if not _check_csrf(request, form.get("csrf_token", "")):
+        raise HTTPException(status_code=400, detail="Invalid CSRF token")
+
+    from wlm import siren as wlm_siren
+
+    try:
+        ok, err = await asyncio.to_thread(wlm_siren.mute, None)
+    except Exception as exc:
+        ok, err = False, str(exc)
+
+    try:
+        conn = wlm_db.connect()
+        wlm_db.insert_alert(
+            kind="siren",
+            message="Siren muted from dashboard until the water drops below CRITICAL",
+            delivered=ok, error=err, conn=conn,
+        )
+        conn.close()
+    except Exception:
+        pass
+
+    if wants_json:
+        # muted=True always: the state is set even when the stop publish fails.
+        return {"ok": ok, "error": err, "muted": True}
+    if ok:
+        request.session["flash"] = "Siren muted until water drops below CRITICAL."
+    else:
+        request.session["flash_error"] = f"Siren mute (stop publish failed): {err}"
+    return RedirectResponse(url="/settings", status_code=302)
+
+
+# --- Unmute-siren button ---
+
+@app.post("/siren/unmute")
+async def unmute_siren(request: Request):
+    """Manually unmute the siren. JSON for the overview button."""
+    pwd = _get_password()
+    wants_json = "application/json" in request.headers.get("accept", "")
+    if not pwd:
+        raise HTTPException(status_code=503)
+    if not _is_authenticated(request):
+        if wants_json:
+            raise HTTPException(status_code=401)
+        return _redirect_login(request)
+
+    form = await request.form()
+    if not _check_csrf(request, form.get("csrf_token", "")):
+        raise HTTPException(status_code=400, detail="Invalid CSRF token")
+
+    from wlm import siren as wlm_siren
+
+    try:
+        await asyncio.to_thread(wlm_siren.unmute, None)
+    except Exception:
+        pass
+
+    try:
+        conn = wlm_db.connect()
+        wlm_db.insert_alert(
+            kind="siren",
+            message="Siren unmuted from dashboard",
+            delivered=True, error=None, conn=conn,
+        )
+        conn.close()
+    except Exception:
+        pass
+
+    if wants_json:
+        return {"ok": True, "muted": False}
+    request.session["flash"] = "Siren unmuted."
     return RedirectResponse(url="/settings", status_code=302)
 
 

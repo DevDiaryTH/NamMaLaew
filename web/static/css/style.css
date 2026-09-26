@@ -852,6 +852,8 @@ textarea.form-control { min-height: 100px; resize: vertical; }
 .kind-heartbeat, .kind-test { background: var(--color-paper-3); color: var(--color-ink); }
 .kind-siren { background: var(--color-ink-2); color: var(--color-paper-3); }
 .kind-pending { background: var(--color-paper-3); color: var(--color-ink-2); }
+/* Siren-muted indicator — uses ink/paper tokens, not status-reserved tokens */
+.badge-siren-muted { background: var(--color-ink-2); color: var(--color-paper-3); border: var(--border-card); }
 
 /* Line position badges */
 .badge-line-pos {

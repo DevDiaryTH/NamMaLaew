@@ -121,4 +121,29 @@
     <button type="submit" class="btn btn-secondary">◆ STOP SIREN</button>
   </form>
 </div>
+
+<!-- Siren Mute -->
+<div class="poster-block">
+  <h3>◆ SIREN MUTE</h3>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-sm);">
+    {% if siren_muted_since %}
+      STATUS: <span class="status-badge badge-siren-muted">MUTED</span>
+      &nbsp;SINCE <span data-ts="{{ siren_muted_since }}">{{ siren_muted_since }}</span>
+    {% else %}
+      STATUS: NOT MUTED
+    {% endif %}
+  </p>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">MUTING SILENCES THE SIREN NOW AND SUPPRESSES ALL FUTURE SIREN SOUNDS UNTIL A READING COMES BACK BELOW CRITICAL. TELEGRAM ALERTS KEEP WORKING. THE SIREN AUTO-UNMUTES WHEN WATER DROPS BELOW CRITICAL.</p>
+  {% if siren_muted_since %}
+  <form method="POST" action="/siren/unmute">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ UNMUTE SIREN</button>
+  </form>
+  {% else %}
+  <form method="POST" action="/siren/mute">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ MUTE UNTIL WATER DROPS</button>
+  </form>
+  {% endif %}
+</div>
 {% endblock %}

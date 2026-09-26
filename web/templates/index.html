@@ -53,6 +53,18 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <button type="submit" class="btn btn-secondary">◆ STOP SIREN</button>
   </form>
+  {% if siren_muted %}
+  <span class="status-badge badge-siren-muted">SIREN MUTED</span>
+  <form method="POST" action="/siren/unmute" id="siren-unmute-form" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ UNMUTE SIREN</button>
+  </form>
+  {% else %}
+  <form method="POST" action="/siren/mute" id="siren-mute-form" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-secondary">◆ MUTE UNTIL WATER DROPS</button>
+  </form>
+  {% endif %}
   {% endif %}
 </div>
 

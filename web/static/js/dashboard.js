@@ -363,3 +363,48 @@
       });
   });
 })();
+
+// Mute-siren button on the overview.
+(function () {
+  const form = document.getElementById("siren-mute-form");
+  if (!form) return;
+  const label = "◆ MUTE UNTIL WATER DROPS";
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]");
+    if (btn) { btn.disabled = true; btn.textContent = "MUTING…"; }
+    fetch("/siren/mute", { method: "POST", body: new FormData(form), headers: { Accept: "application/json" } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (btn) btn.textContent = d.muted ? "✓ MUTED" : "✗ FAILED";
+        if (btn && d.error) btn.title = d.error;
+        setTimeout(() => { location.reload(); }, 1500);
+      })
+      .catch(() => {
+        if (btn) btn.textContent = "✗ FAILED";
+        setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = label; } }, 5000);
+      });
+  });
+})();
+
+// Unmute-siren button on the overview.
+(function () {
+  const form = document.getElementById("siren-unmute-form");
+  if (!form) return;
+  const label = "◆ UNMUTE SIREN";
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]");
+    if (btn) { btn.disabled = true; btn.textContent = "UNMUTING…"; }
+    fetch("/siren/unmute", { method: "POST", body: new FormData(form), headers: { Accept: "application/json" } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (btn) btn.textContent = d.ok ? "✓ UNMUTED" : "✗ FAILED";
+        setTimeout(() => { location.reload(); }, 1500);
+      })
+      .catch(() => {
+        if (btn) btn.textContent = "✗ FAILED";
+        setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = label; } }, 5000);
+      });
+  });
+})();

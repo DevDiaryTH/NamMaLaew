@@ -157,3 +157,31 @@ def maybe_stop_due(conn=None) -> None:
     if now >= off_at:
         logger.info("Siren off time reached (%s) — stopping siren", off_at_str)
         stop(conn=conn)
+
+
+def is_muted(conn=None) -> bool:
+    """True when the siren is muted (runtime_state key siren_muted is set)."""
+    from wlm import db
+    return bool(db.get_state("siren_muted", default="", conn=conn))
+
+
+def mute(conn=None) -> tuple[bool, str | None]:
+    """Mute the siren: set siren_muted timestamp, then silence any sounding siren.
+
+    Sets the siren_muted state key first so the mute is recorded even when the
+    subsequent stop() call fails (e.g. MQTT broker unreachable).  Returns the
+    result of stop(force=True) so callers can report publish errors.
+    """
+    from wlm import db
+    ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    db.set_state("siren_muted", ts, conn=conn)
+    logger.info("Siren MUTED at %s", ts)
+    ok, err = stop(conn=conn, force=True)
+    return ok, err
+
+
+def unmute(conn=None) -> None:
+    """Clear the siren mute state so future alerts can sound the siren."""
+    from wlm import db
+    db.set_state("siren_muted", "", conn=conn)
+    logger.info("Siren UNMUTED")

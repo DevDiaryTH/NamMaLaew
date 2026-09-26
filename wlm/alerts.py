@@ -135,6 +135,18 @@ def _sound_siren(reason: str, reading_id: int | None, dry_run: bool, conn=None) 
     try:
         if not siren.is_configured(conn=conn):
             return
+        # When the siren is muted, record a suppressed-sound row but do not publish.
+        if siren.is_muted(conn=conn):
+            if not dry_run:
+                db.insert_alert(
+                    "siren",
+                    f"Siren muted — not sounded ({reason})",
+                    delivered=False,
+                    error=None,
+                    reading_id=reading_id,
+                    conn=conn,
+                )
+            return
         seconds = settings.get_int("siren_seconds", conn=conn)
         ok, err = siren.sound(seconds, conn=conn, dry_run=dry_run)
         if not dry_run:
@@ -324,6 +336,21 @@ def process_alerts(
                                 reading_id=reading_id, conn=conn)
             except Exception as siren_exc:
                 logger.warning("Siren stop error: %s", siren_exc)
+
+    # ---- auto-unmute when water drops below CRITICAL ----
+    # normal and warning are both below critical — unmute so future alerts can sound.
+    # unknown and critical (including unconfirmed pending) keep the mute.
+    if final_status in ("normal", "warning") and siren.is_muted(conn=conn):
+        if not dry_run:
+            siren.unmute(conn=conn)
+            db.insert_alert(
+                "siren",
+                f"Siren unmuted — water dropped below CRITICAL ({final_status})",
+                delivered=True,
+                error=None,
+                reading_id=reading_id,
+                conn=conn,
+            )
 
     # ---- consecutive failure alert ----
     if final_status == "unknown":
