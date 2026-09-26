@@ -222,12 +222,22 @@ def run_cycle(
             final_status, model_status, level_index,
         )
 
+        # ---- calibrate confidence ----
+        try:
+            cal_table = wlm_learning.calibration_table(conn=conn)
+            calibrated = wlm_learning.calibrate(result.get("confidence"), cal_table)
+        except Exception as exc:
+            logger.warning("Calibration error: %s", exc)
+            calibrated = result.get("confidence")
+        result["calibrated_confidence"] = calibrated
+
         # ---- store reading ----
         reading_values = {
             "status": final_status,
             "model_status": model_status,
             "level_index": level_index,
             "confidence": result.get("confidence"),
+            "calibrated_confidence": calibrated,
             "description": result.get("estimated_level_description"),
             "distance_to_critical": result.get("distance_to_critical"),
             "reason": result.get("reason"),

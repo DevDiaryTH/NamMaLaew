@@ -257,18 +257,39 @@ def process_alerts(
             db.set_state("critical_pending", "", conn=conn)
         logger.info("Critical pending cleared — re-check result: %s", final_status)
 
+    # ---- calibrated confidence and low-confidence flag ----
+    calibrated_confidence = result.get("calibrated_confidence")
+    min_conf = settings.get_float("min_confidence", conn=conn)
+    low_confidence = (
+        min_conf > 0
+        and calibrated_confidence is not None
+        and calibrated_confidence < min_conf
+    )
+
+    # Build a reusable confidence line for Telegram messages.
+    # Use calibrated_confidence when present; fall back to raw confidence.
+    _raw_conf = result.get("confidence")
+    if calibrated_confidence is not None:
+        _conf_pct = int(round(calibrated_confidence * 100))
+        _conf_line = f"ความมั่นใจ / Confidence: {_conf_pct}% (calibrated)\n"
+    elif _raw_conf is not None:
+        _conf_pct = int(round(_raw_conf * 100))
+        _conf_line = f"ความมั่นใจ / Confidence: {_conf_pct}%\n"
+    else:
+        _conf_line = ""
+
     # ---- critical alert ----
     if final_status == "critical":
         critical_confirm = settings.get_bool("critical_confirm", conn=conn)
 
-        # Enter pending when: confirm is on, no pending already, and last_status is not
-        # already "critical" (i.e. this is a fresh transition into critical, not a
-        # sustained critical state after a confirmed alert).
-        if critical_confirm and not critical_pending and last_status != "critical":
+        # Enter pending when: (confirm is on OR low_confidence) and no pending already
+        # and last_status is not already "critical" (i.e. this is a fresh transition).
+        if (critical_confirm or low_confidence) and not critical_pending and last_status != "critical":
             recheck_secs = settings.get_int("critical_confirm_recheck_seconds", conn=conn)
             recheck_ts = (now + timedelta(seconds=recheck_secs)).isoformat(timespec="seconds")
+            reason_word = "low confidence" if low_confidence and not critical_confirm else "confirmation required"
             pend_msg = (
-                f"CRITICAL detected — re-checking in {recheck_secs} s before alerting"
+                f"CRITICAL detected — re-checking in {recheck_secs} s before alerting ({reason_word})"
             )
             if dry_run:
                 print(f"[DRY RUN] critical pending: {pend_msg}")
@@ -279,18 +300,18 @@ def process_alerts(
                 db.set_state("critical_pending", ts, conn=conn)
                 db.set_state("recheck_at", recheck_ts, conn=conn)
             logger.info(
-                "Critical pending (confirmation required) — recheck scheduled at %s",
-                recheck_ts,
+                "Critical pending (%s) — recheck scheduled at %s",
+                reason_word, recheck_ts,
             )
             # Do not update last_status to "critical" for an unconfirmed reading.
             _skip_last_status_update = True
 
         else:
             # Either:
-            #   a) critical_confirm is off → old behaviour
+            #   a) critical_confirm is off and confidence is high → old behaviour
             #   b) critical_pending is set → this is the confirmation reading
             #   c) last_status is already "critical" → sustained critical, use repeat logic
-            if critical_confirm and critical_pending:
+            if critical_pending:
                 # Confirmed: clear the pending state
                 if not dry_run:
                     db.set_state("critical_pending", "", conn=conn)
@@ -320,6 +341,7 @@ def process_alerts(
                     f"level_index: {level_index_str}\n"
                     f"ระดับ: {desc}\n"
                     f"เหตุผล: {reason}\n"
+                    f"{_conf_line}"
                     f"เวลา: {now_local}"
                 )
                 _send_alert("critical", msg, photo_path, reading_id, dry_run, conn=conn)
@@ -336,6 +358,7 @@ def process_alerts(
                 f"level_index: {level_index_str}\n"
                 f"ระดับ: {desc}\n"
                 f"เหตุผล: {reason}\n"
+                f"{_conf_line}"
                 f"เวลา: {now_local}"
             )
             _send_alert("warning", msg, photo_path, reading_id, dry_run, conn=conn)

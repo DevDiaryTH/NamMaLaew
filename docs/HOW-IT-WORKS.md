@@ -137,3 +137,17 @@ The fit is used only after at least 20 samples with rain. Until then the overvie
 With a fitted model, `predict_rise` sums the forecast rain for the next 3 whole hours. It then predicts the rise as `max(0, a · rain + b)`, and the overview's rain tile shows it together with the number of events and R². The model was fitted on the rise over the 2 hours after the rain, so read the prediction as "roughly how much this rain will lift the water", not as an exact time. When the recent-trend ETA is unavailable, the overview shows a rain-based ETA instead (labelled "rain forecast").
 
 The early warning (`alert_on_forecast`, default off) sends a Telegram message when the current level is below `level_warning` and the predicted level reaches it. It sends at most one message every 3 hours. It never changes the reading's status and never sounds the siren.
+
+### Calibrated confidence
+
+Claude returns a `confidence` value (0–1) with every reading, but self-reported confidence is not always well-calibrated — a model may say 0.9 when it is actually right only 70% of the time in that range.
+
+The monitor collects human feedback (correct / wrong) and groups past readings into four confidence buckets: 0–50%, 50–70%, 70–85%, 85–100%. For each bucket it computes the observed accuracy (fraction of readings where the model's status matched the human verdict). Once a bucket has at least 5 samples it is "reliable" and its observed accuracy replaces the raw confidence as the `calibrated_confidence` value stored on the reading.
+
+`calibrated_confidence` is used in two ways:
+
+1. **Dashboard display** — the overview shows the calibrated value (labelled "CALIBRATED") when it is available, and an "UNCERTAIN" badge when it is below `min_confidence`. The reading detail page shows both raw and calibrated values side by side.
+
+2. **Alert gating** — when `min_confidence > 0` and a CRITICAL reading's calibrated confidence is below that threshold, the reading enters the same pending/re-check path as `critical_confirm` (even when `critical_confirm` is off). A second CRITICAL reading is required before the siren sounds and the Telegram message is sent. Low confidence never lowers a status, never suppresses a confirmed or sustained critical, and has no effect on warning, normal, or unknown readings.
+
+The Settings page's Accuracy Statistics card shows the overall status accuracy, mean absolute level error, and the per-bucket calibration table.

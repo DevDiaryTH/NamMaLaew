@@ -13,23 +13,24 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS readings (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts                   TEXT NOT NULL,
-    status               TEXT NOT NULL,          -- normal | warning | critical | unknown (final, after thresholds)
-    model_status         TEXT,                   -- status the model itself returned
-    level_index          REAL,                   -- 0-100, NULL when unknown
-    confidence           REAL,
-    description          TEXT,
-    distance_to_critical TEXT,
-    reason               TEXT,
-    composite_path       TEXT,                   -- relative to SNAPSHOT_DIR
-    model                TEXT,
-    input_tokens         INTEGER,
-    output_tokens        INTEGER,
-    cost_usd             REAL,
-    capture_ms           INTEGER,
-    analysis_ms          INTEGER,
-    error                TEXT
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                     TEXT NOT NULL,
+    status                 TEXT NOT NULL,          -- normal | warning | critical | unknown (final, after thresholds)
+    model_status           TEXT,                   -- status the model itself returned
+    level_index            REAL,                   -- 0-100, NULL when unknown
+    confidence             REAL,
+    calibrated_confidence  REAL,                   -- bucket-accuracy calibrated value, NULL when not yet computed
+    description            TEXT,
+    distance_to_critical   TEXT,
+    reason                 TEXT,
+    composite_path         TEXT,                   -- relative to SNAPSHOT_DIR
+    model                  TEXT,
+    input_tokens           INTEGER,
+    output_tokens          INTEGER,
+    cost_usd               REAL,
+    capture_ms             INTEGER,
+    analysis_ms            INTEGER,
+    error                  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts);
 
@@ -103,6 +104,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lens_readings ADD COLUMN line_position TEXT")
         conn.commit()
     # feedback table is created by SCHEMA (CREATE IF NOT EXISTS), no column migration needed
+
+    reading_cols = {r["name"] for r in conn.execute("PRAGMA table_info(readings)")}
+    if "calibrated_confidence" not in reading_cols:
+        conn.execute("ALTER TABLE readings ADD COLUMN calibrated_confidence REAL")
+        conn.commit()
 
 
 def db_path() -> Path:

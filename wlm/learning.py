@@ -15,6 +15,105 @@ logger = logging.getLogger("wlm.learning")
 _VALID_VERDICTS = frozenset({"correct", "wrong"})
 _VALID_STATUSES = frozenset({"normal", "warning", "critical"})
 
+# Confidence buckets: (lower_inclusive, upper_exclusive).
+# The last bucket's upper bound is 1.01 so that confidence == 1.0 is included.
+CONFIDENCE_BUCKETS = [(0.0, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 1.01)]
+
+
+def calibration_table(conn=None, min_samples: int = 5) -> list[dict]:
+    """Return calibration accuracy per confidence bucket.
+
+    Each row: {lo, hi, n, n_correct, accuracy, reliable}.
+    Only readings with a non-unknown status and non-NULL confidence are counted.
+    "Correct" means readings.status == feedback.true_status.
+    """
+    with db._conn(conn) as c:
+        rows = c.execute(
+            """SELECT r.confidence, r.status, f.true_status
+               FROM readings r
+               JOIN feedback f ON f.reading_id = r.id
+               WHERE r.status != 'unknown'
+                 AND r.confidence IS NOT NULL"""
+        ).fetchall()
+
+    result = []
+    for lo, hi in CONFIDENCE_BUCKETS:
+        bucket_rows = [r for r in rows if lo <= r["confidence"] < hi]
+        n = len(bucket_rows)
+        n_correct = sum(1 for r in bucket_rows if r["status"] == r["true_status"])
+        accurate = n_correct / n if n > 0 else None
+        result.append({
+            "lo": lo,
+            "hi": hi,
+            "n": n,
+            "n_correct": n_correct,
+            "accuracy": accurate,
+            "reliable": n >= min_samples,
+        })
+    return result
+
+
+def calibrate(confidence, table: list[dict]) -> float | None:
+    """Return the calibrated confidence for a raw confidence value.
+
+    Returns None when confidence is None.
+    When the matching bucket is reliable (n >= min_samples), returns the bucket
+    accuracy; otherwise returns the raw confidence as a fallback.
+    """
+    if confidence is None:
+        return None
+    for row in table:
+        if row["lo"] <= confidence < row["hi"]:
+            if row["reliable"] and row["accuracy"] is not None:
+                return row["accuracy"]
+            return confidence
+    # Clamp: confidence == 1.0 is caught by the last bucket (hi=1.01), but guard anyway.
+    return confidence
+
+
+def accuracy_stats(conn=None) -> dict:
+    """Return a summary of feedback accuracy statistics.
+
+    Keys:
+      feedback_count   - total rows in the feedback table
+      status_accuracy  - fraction where readings.status == feedback.true_status (or None)
+      level_mae        - mean |level_index - true_level_index| where both present (or None)
+      calibration      - the list returned by calibration_table()
+    """
+    with db._conn(conn) as c:
+        count_row = c.execute("SELECT COUNT(*) AS n FROM feedback").fetchone()
+        feedback_count = count_row["n"] if count_row else 0
+
+        matched_rows = c.execute(
+            """SELECT r.status, f.true_status, r.level_index, f.true_level_index
+               FROM readings r
+               JOIN feedback f ON f.reading_id = r.id
+               WHERE r.status != 'unknown'"""
+        ).fetchall()
+
+    if matched_rows:
+        n_status = len(matched_rows)
+        n_correct = sum(1 for r in matched_rows if r["status"] == r["true_status"])
+        status_accuracy: float | None = n_correct / n_status
+    else:
+        status_accuracy = None
+
+    level_errors = [
+        abs(r["level_index"] - r["true_level_index"])
+        for r in matched_rows
+        if r["level_index"] is not None and r["true_level_index"] is not None
+    ]
+    level_mae: float | None = sum(level_errors) / len(level_errors) if level_errors else None
+
+    table = calibration_table(conn=conn)
+
+    return {
+        "feedback_count": feedback_count,
+        "status_accuracy": status_accuracy,
+        "level_mae": level_mae,
+        "calibration": table,
+    }
+
 
 def record_feedback(
     reading_id: int,

@@ -263,6 +263,7 @@ async def overview(request: Request):
         rise_rate_pts = web_metrics.count_window_points(conn)
         siren_host = bool(wlm_settings.get("mqtt_host", conn=conn))
         siren_muted = bool(wlm_db.get_state("siren_muted", default="", conn=conn))
+        min_confidence = wlm_settings.get_float("min_confidence", conn=conn)
         try:
             site_lat = float(wlm_settings.get("latitude",  conn=conn).strip())
             site_lon = float(wlm_settings.get("longitude", conn=conn).strip())
@@ -303,6 +304,7 @@ async def overview(request: Request):
         rain_prediction = None
         rain_eta = None
         _rm = None
+        min_confidence = 0.5
 
     ctx = _base_context(request)
     ctx.update({
@@ -322,6 +324,7 @@ async def overview(request: Request):
         "site_lon": site_lon,
         "rain_prediction": rain_prediction,
         "rain_model_state": _rm,
+        "min_confidence": min_confidence,
     })
     return templates.TemplateResponse(request, "index.html", ctx)
 
@@ -540,6 +543,12 @@ async def settings_page(request: Request):
         setup = _site_setup_status(conn)
         examples = wlm_learning.list_examples(conn=conn)
         feedback_count = conn.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
+        try:
+            accuracy = wlm_learning.accuracy_stats(conn=conn)
+        except Exception:
+            logger.warning("accuracy_stats failed", exc_info=True)
+            accuracy = {"feedback_count": feedback_count, "status_accuracy": None,
+                        "level_mae": None, "calibration": []}
         conn.close()
     except Exception:
         logger.exception("Settings DB error")
@@ -549,6 +558,7 @@ async def settings_page(request: Request):
         setup = None
         examples = []
         feedback_count = 0
+        accuracy = {"feedback_count": 0, "status_accuracy": None, "level_mae": None, "calibration": []}
 
     snap_dir = wlm_db.snapshot_dir()
     # Build per-example thumbnail path (first image in the example folder, relative to snap_dir)
@@ -574,6 +584,7 @@ async def settings_page(request: Request):
         "setup": setup,
         "examples": examples_with_thumb,
         "feedback_count": feedback_count,
+        "accuracy": accuracy,
         "flash": request.session.pop("flash", None),
         "flash_error": request.session.pop("flash_error", None),
     })
@@ -660,6 +671,15 @@ def _validate_settings(form_data: dict) -> list[str]:
         except (ValueError, TypeError):
             errors.append("learning_max_examples must be an integer")
 
+    mc = form_data.get("min_confidence", "").strip()
+    if mc:
+        try:
+            mc_f = float(mc)
+            if not (0.0 <= mc_f <= 1.0):
+                errors.append("min_confidence must be 0.0–1.0")
+        except (ValueError, TypeError):
+            errors.append("min_confidence must be a number")
+
     return errors
 
 
@@ -697,6 +717,7 @@ async def settings_save(request: Request):
             "setup": setup,
             "examples": [],
             "feedback_count": 0,
+            "accuracy": {"feedback_count": 0, "status_accuracy": None, "level_mae": None, "calibration": []},
             "flash": None,
             "flash_error": "; ".join(errors),
         })
