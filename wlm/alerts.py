@@ -311,7 +311,7 @@ def process_alerts(
             #   a) critical_confirm is off and confidence is high → old behaviour
             #   b) critical_pending is set → this is the confirmation reading
             #   c) last_status is already "critical" → sustained critical, use repeat logic
-            if (critical_confirm or critical_pending) and critical_pending:
+            if critical_pending:
                 # Confirmed: clear the pending state
                 if not dry_run:
                     db.set_state("critical_pending", "", conn=conn)
