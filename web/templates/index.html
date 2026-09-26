@@ -175,27 +175,30 @@
        data-lat="{{ site_lat }}" data-lon="{{ site_lon }}">
     <div class="card-header-row">
       <h3>◆ RAIN AROUND / ฝนรอบพื้นที่</h3>
-      <div class="range-btns" id="rain-radius-btns">
-        <button class="rain-radius-btn" data-radius="10">10 KM</button>
-        <button class="rain-radius-btn active" data-radius="25">25 KM</button>
-        <button class="rain-radius-btn" data-radius="50">50 KM</button>
-      </div>
-    </div>
-    <div class="rain-around-layout">
-      <div class="rain-compass-area">
-        <svg id="rain-compass-svg" class="rain-compass-svg"
-             viewBox="0 0 300 300" aria-label="Rain direction compass"
-             role="img"></svg>
-        <p id="rain-compass-caption" class="rain-compass-caption"></p>
-        <p id="rain-compass-fetched" class="rain-compass-fetched"></p>
-      </div>
-      <div class="rain-map-area">
-        <div id="rain-map" class="rain-map-container"></div>
-        <div class="rain-map-footer">
-          <span id="rain-radar-status"></span>
-          <span id="rain-frame-time" class="rain-frame-time"></span>
+      <div class="rain-controls">
+        <div class="rain-radius-row">
+          <button class="rain-radius-btn" data-radius="10">10 KM</button>
+          <button class="rain-radius-btn active" data-radius="25">25 KM</button>
+          <button class="rain-radius-btn" data-radius="50">50 KM</button>
+        </div>
+        <div class="rain-time-row">
+          <button class="rain-time-btn active" data-mode="radar">เรดาร์ · Radar</button>
+          <button class="rain-time-btn" data-mode="1">+1 ชม.</button>
+          <button class="rain-time-btn" data-mode="2">+2 ชม.</button>
+          <button class="rain-time-btn" data-mode="3">+3 ชม.</button>
         </div>
       </div>
+    </div>
+    <div id="rain-map" class="rain-map-container"></div>
+    <div class="rain-map-footer">
+      <span id="rain-radar-status"></span>
+      <span id="rain-frame-time" class="rain-frame-time"></span>
+    </div>
+    <div id="rain-forecast-legend" class="rain-forecast-legend" hidden>
+      <span class="rain-legend-label">ปริมาณฝน · Rain:</span>
+      <span class="rain-legend-swatch" style="--swatch-o:0.37">0.5 mm</span>
+      <span class="rain-legend-swatch" style="--swatch-o:0.59">2 mm</span>
+      <span class="rain-legend-swatch" style="--swatch-o:0.85">5+ mm</span>
     </div>
   </div>
   {% else %}
