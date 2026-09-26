@@ -133,7 +133,7 @@
       STATUS: NOT MUTED
     {% endif %}
   </p>
-  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">MUTING SILENCES THE SIREN NOW AND SUPPRESSES ALL FUTURE SIREN SOUNDS UNTIL A READING COMES BACK BELOW CRITICAL. TELEGRAM ALERTS KEEP WORKING. THE SIREN AUTO-UNMUTES WHEN WATER DROPS BELOW CRITICAL.</p>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">MUTING SILENCES THE SIREN NOW AND SUPPRESSES ALL FUTURE SIREN SOUNDS UNTIL THE WATER DROPS BELOW THE LEVEL IT WAS AT WHEN YOU MUTED (CRITICAL → WARNING OR NORMAL; WARNING → NORMAL). TELEGRAM ALERTS KEEP WORKING.</p>
   {% if siren_muted_since %}
   <form method="POST" action="/siren/unmute">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

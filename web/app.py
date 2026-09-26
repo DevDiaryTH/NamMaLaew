@@ -693,7 +693,7 @@ async def stop_siren(request: Request):
 
 @app.post("/siren/mute")
 async def mute_siren(request: Request):
-    """Mute the siren until water drops below CRITICAL. JSON for the overview button."""
+    """Mute the siren until the water drops below its current level. JSON for the overview button."""
     pwd = _get_password()
     wants_json = "application/json" in request.headers.get("accept", "")
     if not pwd:
@@ -718,7 +718,7 @@ async def mute_siren(request: Request):
         conn = wlm_db.connect()
         wlm_db.insert_alert(
             kind="siren",
-            message="Siren muted from dashboard until the water drops below CRITICAL",
+            message="Siren muted from dashboard until the water drops",
             delivered=ok, error=err, conn=conn,
         )
         conn.close()
@@ -729,7 +729,7 @@ async def mute_siren(request: Request):
         # muted=True always: the state is set even when the stop publish fails.
         return {"ok": ok, "error": err, "muted": True}
     if ok:
-        request.session["flash"] = "Siren muted until water drops below CRITICAL."
+        request.session["flash"] = "Siren muted until the water drops."
     else:
         request.session["flash_error"] = f"Siren mute (stop publish failed): {err}"
     return RedirectResponse(url="/settings", status_code=302)

@@ -235,3 +235,44 @@ class TestAutoUnmute:
 
         rows = _siren_rows(tmp_db)
         assert not any("unmuted" in r["message"].lower() for r in rows)
+
+
+class TestMutedLevel:
+    """The mute lifts only when the water drops below the level it was muted at."""
+
+    def _mute_at(self, conn, last_status):
+        db.set_state("last_status", last_status, conn=conn)
+        with patch("wlm.siren.stop", return_value=(True, None)):
+            siren.mute(conn=conn)
+
+    def test_mute_records_current_level(self, tmp_db):
+        self._mute_at(tmp_db, "warning")
+        assert siren.muted_level(conn=tmp_db) == "warning"
+
+    def test_mute_at_normal_is_treated_as_critical(self, tmp_db):
+        self._mute_at(tmp_db, "normal")
+        assert siren.muted_level(conn=tmp_db) == "critical"
+
+    def test_muted_at_warning_stays_muted_on_warning(self, tmp_db):
+        self._mute_at(tmp_db, "warning")
+        db.set_setting("telegram_enabled", "0", conn=tmp_db)
+        process_alerts("warning", _make_result("warning", 55.0), None, None,
+                       dry_run=False, conn=tmp_db)
+        assert siren.is_muted(conn=tmp_db) is True
+
+    def test_muted_at_warning_unmutes_on_normal(self, tmp_db):
+        self._mute_at(tmp_db, "warning")
+        db.set_setting("telegram_enabled", "0", conn=tmp_db)
+        process_alerts("normal", _make_result("normal", 10.0), None, None,
+                       dry_run=False, conn=tmp_db)
+        assert siren.is_muted(conn=tmp_db) is False
+        assert db.get_state("siren_muted_level", default="", conn=tmp_db) == ""
+
+    def test_muted_at_critical_unmutes_on_warning(self, tmp_db):
+        self._mute_at(tmp_db, "critical")
+        db.set_setting("telegram_enabled", "0", conn=tmp_db)
+        process_alerts("warning", _make_result("warning", 55.0), None, None,
+                       dry_run=False, conn=tmp_db)
+        assert siren.is_muted(conn=tmp_db) is False
+        msgs = [r["message"] for r in _siren_rows(tmp_db)]
+        assert any("below CRITICAL (warning)" in m for m in msgs)

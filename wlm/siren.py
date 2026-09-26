@@ -165,8 +165,29 @@ def is_muted(conn=None) -> bool:
     return bool(db.get_state("siren_muted", default="", conn=conn))
 
 
+_STATUS_RANK = {"normal": 0, "warning": 1, "critical": 2}
+
+
+def muted_level(conn=None) -> str:
+    """Status the mute was taken at: it lifts once a reading drops below this level."""
+    from wlm import db
+    level = db.get_state("siren_muted_level", default="", conn=conn) or "critical"
+    return level if level in _STATUS_RANK else "critical"
+
+
+def should_unmute(final_status: str, conn=None) -> bool:
+    """True when *final_status* is below the level the siren was muted at."""
+    if final_status not in _STATUS_RANK:
+        return False  # unknown keeps the mute
+    return _STATUS_RANK[final_status] < _STATUS_RANK[muted_level(conn=conn)]
+
+
 def mute(conn=None) -> tuple[bool, str | None]:
     """Mute the siren: set siren_muted timestamp, then silence any sounding siren.
+
+    The mute lifts when a reading drops below the current level (WARNING or
+    CRITICAL; CRITICAL when the level is normal or unknown), so muting during a
+    long WARNING is not undone by the next WARNING reading.
 
     Sets the siren_muted state key first so the mute is recorded even when the
     subsequent stop() call fails (e.g. MQTT broker unreachable).  Returns the
@@ -174,6 +195,8 @@ def mute(conn=None) -> tuple[bool, str | None]:
     """
     from wlm import db
     ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    last = db.get_state("last_status", default="", conn=conn) or ""
+    db.set_state("siren_muted_level", last if last in ("warning", "critical") else "critical", conn=conn)
     db.set_state("siren_muted", ts, conn=conn)
     logger.info("Siren MUTED at %s", ts)
     ok, err = stop(conn=conn, force=True)
@@ -184,4 +207,5 @@ def unmute(conn=None) -> None:
     """Clear the siren mute state so future alerts can sound the siren."""
     from wlm import db
     db.set_state("siren_muted", "", conn=conn)
+    db.set_state("siren_muted_level", "", conn=conn)
     logger.info("Siren UNMUTED")

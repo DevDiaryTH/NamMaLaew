@@ -337,15 +337,15 @@ def process_alerts(
             except Exception as siren_exc:
                 logger.warning("Siren stop error: %s", siren_exc)
 
-    # ---- auto-unmute when water drops below CRITICAL ----
-    # normal and warning are both below critical — unmute so future alerts can sound.
-    # unknown and critical (including unconfirmed pending) keep the mute.
-    if final_status in ("normal", "warning") and siren.is_muted(conn=conn):
+    # ---- auto-unmute when the water drops below the level it was muted at ----
+    # unknown and the muted level itself (incl. an unconfirmed pending critical) keep it.
+    if siren.is_muted(conn=conn) and siren.should_unmute(final_status, conn=conn):
         if not dry_run:
+            level = siren.muted_level(conn=conn)
             siren.unmute(conn=conn)
             db.insert_alert(
                 "siren",
-                f"Siren unmuted — water dropped below CRITICAL ({final_status})",
+                f"Siren unmuted — water dropped below {level.upper()} ({final_status})",
                 delivered=True,
                 error=None,
                 reading_id=reading_id,
