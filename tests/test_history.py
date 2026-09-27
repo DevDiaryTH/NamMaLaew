@@ -91,7 +91,7 @@ class TestRecentContextFormatting:
         assert "10:15 UTC (-15m ago)" in result
         assert "status=normal" in result
         assert "level=30.0" in result
-        assert "conf=90%" in result
+        assert "conf=0.90" in result
 
     def test_level_index_none_shown_as_dash(self, db_conn):
         now = datetime(2026, 9, 27, 10, 0, 0, tzinfo=timezone.utc)
@@ -380,13 +380,13 @@ class TestAnalyzeImagesHistoryBlocks:
         assert not any("Current images to analyze" in t for t in texts)
 
     def test_history_only_shows_marker_and_history(self):
-        content = self._call(history_text="  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=90%")
+        content = self._call(history_text="  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=0.90")
         texts = [b["text"] for b in content if b["type"] == "text"]
         assert any("Recent readings at this site" in t for t in texts)
         assert any("Current images to analyze" in t for t in texts)
 
     def test_history_block_before_current_images_marker(self):
-        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=90%"
+        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=0.90"
         content = self._call(history_text=history)
         texts = [b["text"] for b in content if b["type"] == "text"]
         history_idx = next(i for i, t in enumerate(texts) if "Recent readings at this site" in t)
@@ -402,7 +402,7 @@ class TestAnalyzeImagesHistoryBlocks:
             "images": [("cam", self.example_img)],
             "is_night": False,
         }]
-        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=90%"
+        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=0.90"
         content = self._call(examples=examples, history_text=history)
         texts = [b["text"] for b in content if b["type"] == "text"]
 
@@ -426,7 +426,7 @@ class TestAnalyzeImagesHistoryBlocks:
         assert not any("Recent readings at this site" in t for t in texts)
 
     def test_prompt_mentions_history_guidance(self):
-        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=90%"
+        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=0.90"
         content = self._call(history_text=history)
         texts = [b["text"] for b in content if b["type"] == "text"]
         prompt = texts[-1]
@@ -500,7 +500,7 @@ class TestRunnerHistorySetting:
         wlm_db.set_setting("learning_use_history", "1", conn=tmp_db)
 
         called_with = {}
-        fake_history = "  10:00 UTC (-5m ago)  status=normal  level=25.0  conf=85%"
+        fake_history = "  10:00 UTC (-5m ago)  status=normal  level=25.0  conf=0.85"
 
         def fake_analyze(frames, **kwargs):
             called_with.update(kwargs)

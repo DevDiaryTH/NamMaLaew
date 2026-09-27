@@ -503,3 +503,30 @@ class TestLowConfidenceCritical:
 
         if captured_msg:
             assert "Confidence" not in captured_msg[0]
+
+
+class TestConfidenceScale:
+    """Claude sometimes answers confidence on a 0-100 scale; it must end up 0-1."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        (0.78, 0.78), (78, 0.78), (1.0, 1.0), (100, 1.0), (0, 0.0), (250, 1.0), (-0.2, 0.0),
+        (None, None), ("x", None),
+    ])
+    def test_normalize_confidence(self, raw, expected):
+        from wlm.analysis import normalize_confidence
+        result = normalize_confidence(raw)
+        assert result == (pytest.approx(expected) if expected is not None else None)
+
+    def test_calibrate_accepts_percent_scale(self):
+        from wlm.learning import calibrate, CONFIDENCE_BUCKETS
+        table = [{"lo": lo, "hi": hi, "n": 0, "n_correct": 0, "accuracy": None, "reliable": False}
+                 for lo, hi in CONFIDENCE_BUCKETS]
+        assert calibrate(30, table) == pytest.approx(0.3)
+
+    def test_calibration_table_buckets_percent_scale_rows(self, tmp_db):
+        from wlm import learning
+        rid = db.insert_reading({"status": "normal", "level_index": 5.0, "confidence": 78.0}, conn=tmp_db)
+        learning.record_feedback(rid, "correct", conn=tmp_db)
+        table = learning.calibration_table(conn=tmp_db, min_samples=1)
+        bucket = next(b for b in table if b["lo"] == 0.7)
+        assert bucket["n"] == 1

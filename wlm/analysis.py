@@ -38,6 +38,23 @@ def _cap_text(text: object, limit: int) -> object:
     return text[:cut] + "…"
 
 
+def normalize_confidence(value: object) -> float | None:
+    """Return confidence on the 0-1 scale.
+
+    The model sometimes answers on a 0-100 scale (e.g. 78 instead of 0.78); values
+    above 1 are treated as percentages. The result is clamped to 0-1.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v > 1.0:
+        v = v / 100.0
+    return max(0.0, min(1.0, v))
+
+
 # Legacy pricing table kept for backward compatibility (test_core_status uses it).
 # With a Claude subscription the CLI reports total_cost_usd which is what the
 # dashboard stores; this table is no longer used for new analysis calls.
@@ -287,7 +304,8 @@ def analyze_images(
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
         "If you cannot see water or cannot determine the level, use level_status='unknown' (level_index is then ignored; set it to 0).\n\n"
         f"Reference description (defines the level_index 0-100 scale):\n{reference_description}\n\n"
-        "level_index scale: 0=completely dry (no water anywhere), 100=worst flooding as defined in the reference description above.\n\n"
+        "level_index scale: 0=completely dry (no water anywhere), 100=worst flooding as defined in the reference description above.\n"
+        "confidence is a fraction from 0.0 to 1.0 (e.g. 0.78), not a percentage.\n\n"
         "For each lens, estimate water_coverage_pct = percentage of the visible ground area in that lens covered by standing water (0-100).\n\n"
         + lines_section
         + low_light_section
@@ -399,10 +417,12 @@ def analyze_images(
     for lens in structured.get("per_lens") or []:
         lens["observation"] = _cap_text(lens.get("observation"), _CAP_OBS)
 
+    structured["confidence"] = normalize_confidence(structured.get("confidence"))
+
     logger.info(
         "Analysis: status=%s level_index=%s confidence=%.2f",
         structured.get("level_status"),
         structured.get("level_index"),
-        structured.get("confidence", 0.0),
+        structured.get("confidence") or 0.0,
     )
     return structured, input_tokens, output_tokens, cost_usd

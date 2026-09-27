@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from wlm import db, settings
+from wlm.analysis import normalize_confidence
 
 logger = logging.getLogger("wlm.learning")
 
@@ -38,7 +39,7 @@ def calibration_table(conn=None, min_samples: int = 5) -> list[dict]:
 
     result = []
     for lo, hi in CONFIDENCE_BUCKETS:
-        bucket_rows = [r for r in rows if lo <= r["confidence"] < hi]
+        bucket_rows = [r for r in rows if lo <= normalize_confidence(r["confidence"]) < hi]
         n = len(bucket_rows)
         n_correct = sum(1 for r in bucket_rows if r["status"] == r["true_status"])
         accurate = n_correct / n if n > 0 else None
@@ -60,6 +61,7 @@ def calibrate(confidence, table: list[dict]) -> float | None:
     When the matching bucket is reliable (n >= min_samples), returns the bucket
     accuracy; otherwise returns the raw confidence as a fallback.
     """
+    confidence = normalize_confidence(confidence)
     if confidence is None:
         return None
     for row in table:
@@ -366,9 +368,10 @@ def recent_context(
             annotation = ""
 
         level_str = f"{display_level:.1f}" if display_level is not None else "-"
-        conf_pct = int(round((row["confidence"] or 0.0) * 100))
+        conf = normalize_confidence(row["confidence"])
+        conf_str = "-" if conf is None else f"{conf:.2f}"
         lines.append(
-            f"  {time_label}  status={display_status}  level={level_str}  conf={conf_pct}%{annotation}"
+            f"  {time_label}  status={display_status}  level={level_str}  conf={conf_str}{annotation}"
         )
 
     rain_total = rain_row["total"] if rain_row else None
