@@ -19,9 +19,98 @@ _VALID_STATUSES = frozenset({"normal", "warning", "critical"})
 # The last bucket's upper bound is 1.01 so that confidence == 1.0 is included.
 CONFIDENCE_BUCKETS = [(0.0, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 1.01)]
 
-# Minimum age a reading must have before its example is eligible for selection.
-# Prevents a freshly-made correction from immediately anchoring Claude's output.
-EXAMPLE_MIN_AGE_HOURS = 6
+# Status severity rank used by the safety re-check helpers.
+STATUS_RANK: dict[str, int] = {"unknown": 0, "normal": 1, "warning": 2, "critical": 3}
+
+# A level-index drop of this many points (or more) triggers a safety re-check.
+SAFETY_DROP_LEVEL: int = 30
+
+# How far back (in minutes) to look for the "previous reading" used by the re-check.
+SAFETY_PREV_WINDOW_MINUTES: int = 60
+
+
+def previous_reading(
+    conn=None,
+    now: datetime | None = None,
+    window_minutes: int = SAFETY_PREV_WINDOW_MINUTES,
+) -> dict | None:
+    """Return the latest non-unknown reading within the window, or None.
+
+    The returned dict has keys ``status`` (str) and ``level_index`` (float or None).
+    Only readings with status != 'unknown' and ts within the past window_minutes are
+    considered.  ``now`` defaults to the current UTC time; pass it for deterministic tests.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=window_minutes)).isoformat(timespec="seconds")
+    now_iso = now.isoformat(timespec="seconds")
+    with db._conn(conn) as c:
+        row = c.execute(
+            """SELECT status, level_index FROM readings
+               WHERE status != 'unknown'
+                 AND ts >= ?
+                 AND ts <= ?
+               ORDER BY ts DESC
+               LIMIT 1""",
+            (cutoff, now_iso),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"status": row["status"], "level_index": row["level_index"]}
+
+
+def needs_safety_recheck(
+    prev: dict | None,
+    new_final_status: str,
+    new_level_index: float | None,
+    used_examples: bool,
+) -> bool:
+    """Return True when the new result should be cross-checked without learning context.
+
+    Triggers when:
+    - ``prev`` is not None and STATUS_RANK[new_final_status] < STATUS_RANK[prev status], OR
+    - ``prev`` is not None and both level_indices are present and prev_level - new_level >= SAFETY_DROP_LEVEL.
+    - ``prev`` is None and ``used_examples`` is True.
+    """
+    if prev is not None:
+        prev_rank = STATUS_RANK.get(prev["status"], 0)
+        new_rank = STATUS_RANK.get(new_final_status, 0)
+        if new_rank < prev_rank:
+            return True
+        prev_level = prev.get("level_index")
+        if prev_level is not None and new_level_index is not None:
+            if prev_level - new_level_index >= SAFETY_DROP_LEVEL:
+                return True
+        return False
+    # No previous reading in the window.
+    return used_examples
+
+
+def pick_higher(
+    a: tuple[str, float | None],
+    b: tuple[str, float | None],
+) -> str:
+    """Return "a" or "b": whichever represents a higher water-level result.
+
+    Comparison rules (in order):
+    1. Higher STATUS_RANK wins.
+    2. On a tie, higher level_index wins (None counts as -1).
+    3. On a full tie, "a".
+
+    A result whose status is "unknown" never beats a known status because
+    STATUS_RANK["unknown"] == 0, which is lower than every known status.
+    """
+    a_status, a_level = a
+    b_status, b_level = b
+    a_rank = STATUS_RANK.get(a_status, 0)
+    b_rank = STATUS_RANK.get(b_status, 0)
+    if a_rank != b_rank:
+        return "a" if a_rank > b_rank else "b"
+    a_lv = a_level if a_level is not None else -1
+    b_lv = b_level if b_level is not None else -1
+    if a_lv != b_lv:
+        return "a" if a_lv > b_lv else "b"
+    return "a"
 
 
 def calibration_table(conn=None, min_samples: int = 5) -> list[dict]:
@@ -396,13 +485,8 @@ def select_examples(
     conn=None,
     current_is_night: bool | None = None,
     k: int | None = None,
-    now: datetime | None = None,
 ) -> list[dict]:
     """Return up to k examples whose files still exist, for few-shot calibration.
-
-    Only readings that are at least EXAMPLE_MIN_AGE_HOURS old (relative to now)
-    are eligible.  This prevents a freshly-made correction from immediately
-    anchoring Claude's output to the corrected label.
 
     Selection order: first pick one per true_status (critical, warning, normal),
     preferring same day/night as current when current_is_night is not None,
@@ -413,12 +497,7 @@ def select_examples(
         current_is_night: when not None, prefer examples with matching day/night.
         k: maximum number of examples to return; defaults to the
             learning_max_examples setting.
-        now: reference time (UTC); defaults to datetime.now(timezone.utc).
-            Provided for deterministic tests.
     """
-    if now is None:
-        now = datetime.now(timezone.utc)
-
     if k is None:
         with db._conn(conn) as c:
             k = settings.get_int("learning_max_examples", conn=c)
@@ -426,21 +505,16 @@ def select_examples(
     if k == 0:
         return []
 
-    cutoff = (now - timedelta(hours=EXAMPLE_MIN_AGE_HOURS)).isoformat(timespec="seconds")
-
     with db._conn(conn) as c:
         rows = c.execute(
             """SELECT f.reading_id, f.true_status, f.true_level_index, f.note,
                       f.example_dir, f.ts,
                       MAX(lr.is_night) AS is_night
                FROM feedback f
-               JOIN readings r ON r.id = f.reading_id
                LEFT JOIN lens_readings lr ON lr.reading_id = f.reading_id AND lr.ok = 1
                WHERE f.is_example = 1
-                 AND r.ts <= ?
                GROUP BY f.reading_id
                ORDER BY f.ts DESC""",
-            (cutoff,),
         ).fetchall()
 
     snap_dir = db.snapshot_dir()
