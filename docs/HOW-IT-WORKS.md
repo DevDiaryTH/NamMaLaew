@@ -101,6 +101,8 @@ When examples are present, the runner prepends them to every Claude call as veri
 
 The `learning_max_examples` setting (default 3) controls how many examples are sent. Selection picks one example per status level (critical → warning → normal), preferring the same day/night mode as the current capture, then fills remaining slots with the newest examples. Setting `learning_max_examples` to 0 disables the feature entirely.
 
+Examples are sent to Claude only once the reading is at least 6 hours old, and Claude is told to judge the current level only from the current images and never copy a value directly from an example.
+
 Reference examples survive `prune_snapshots()` because pruning only removes JPEG files directly in `snapshots/` (non-recursive), while examples are stored in `snapshots/examples/<id>/`.
 
 ### Recent-history context
@@ -122,7 +124,7 @@ Current images to analyze:
 [Analysis prompt — includes a paragraph asking Claude to treat the history as a soft prior]
 ```
 
-Claude is explicitly instructed to judge each set of images on their own visual evidence first, and to use the history only as a prior: a clear change in the images should be reported even if it is large; history only nudges the result when the image evidence is ambiguous. Set `learning_use_history` to `0` to disable.
+Claude is explicitly instructed to judge each set of images on their own visual evidence first, and to use the history only as a prior: a clear change in the images should be reported even if it is large; history only nudges the result when the image evidence is ambiguous. Corrections are labelled as applying to that earlier image, and Claude is instructed that current images showing standing water take precedence over lower values in the history. Set `learning_use_history` to `0` to disable.
 
 ### Calibrated confidence
 
