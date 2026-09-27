@@ -357,3 +357,21 @@ def test_count_window_points_ignores_older_same_day_readings(tmp_path, monkeypat
         ts = (now - timedelta(minutes=minutes_ago)).isoformat(timespec="seconds")
         db.insert_reading({"ts": ts, "status": "normal", "level_index": 10.0}, conn=conn)
     assert metrics.count_window_points(conn, minutes=60) == 3
+
+
+# ---------------------------------------------------------------------------
+# get_series
+# ---------------------------------------------------------------------------
+
+def test_series_weather_excludes_forecast_hours():
+    """Future (forecast) weather hours must not be charted as measured rain."""
+    conn = make_conn()
+    hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    past = (hour - timedelta(hours=1)).isoformat(timespec="seconds")
+    current = hour.isoformat(timespec="seconds")
+    future = (hour + timedelta(hours=2)).isoformat(timespec="seconds")
+    for ts in (past, current, future):
+        wlm_db.upsert_weather(ts, 1.0, conn=conn)
+
+    hours = [w["hour_ts"] for w in metrics.get_series(conn, "24h")["weather"]]
+    assert hours == [past, current]

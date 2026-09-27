@@ -21,6 +21,66 @@
   }
 
   // -------------------------------------------------------------------------
+  // Tooltip interaction: group datasets by time, not array index
+  // -------------------------------------------------------------------------
+  const HALF_HOUR_MS = 30 * 60 * 1000;
+  // Max gap for a line point to share a tooltip with the anchor; set per
+  // chart from the reading spacing in initChart.
+  let lineToleranceMs = 10 * 60 * 1000;
+
+  // Built-in "index" mode pairs the Nth element of every dataset, which is
+  // wrong here: rain is hourly, readings are ~15 min apart. This mode picks
+  // the element nearest the cursor along x, then adds from each other
+  // dataset the element nearest that time, if close enough.
+  function sameTimeMode(chart, e, options, useFinalPosition) {
+    const pos = Chart.helpers.getRelativePosition(e, chart);
+    const xScale = chart.scales.x;
+    const metas = chart.getSortedVisibleDatasetMetas()
+      .filter((m) => !chart.data.datasets[m.index].skipTooltip);
+
+    let anchor = null;
+    let best = Infinity;
+    metas.forEach((meta) => {
+      meta.data.forEach((el, index) => {
+        const { x } = el.getProps(["x"], useFinalPosition);
+        const d = Math.abs(x - pos.x);
+        if (d < best) {
+          best = d;
+          anchor = { element: el, datasetIndex: meta.index, index, meta };
+        }
+      });
+    });
+    if (!anchor) return [];
+
+    const anchorIsBar = anchor.meta.type === "bar";
+    const t = xScale.getValueForPixel(anchor.element.getProps(["x"], useFinalPosition).x);
+    const items = [anchor];
+    metas.forEach((meta) => {
+      if (meta.index === anchor.datasetIndex) return;
+      const isBar = meta.type === "bar";
+      // A bar covers its hour; line points must be near the anchor time
+      // (or inside the anchor bar's hour).
+      const tol = isBar || anchorIsBar ? HALF_HOUR_MS : lineToleranceMs;
+      let pick = null;
+      let pickD = Infinity;
+      meta.data.forEach((el, index) => {
+        const elT = xScale.getValueForPixel(el.getProps(["x"], useFinalPosition).x);
+        const d = Math.abs(elT - t);
+        if (d <= tol && d < pickD) {
+          pickD = d;
+          pick = { element: el, datasetIndex: meta.index, index };
+        }
+      });
+      if (pick) items.push(pick);
+    });
+    return items;
+  }
+
+  if (typeof Chart !== "undefined") {
+    Chart.Interaction.modes.sameTime = sameTimeMode;
+  }
+
+  // -------------------------------------------------------------------------
   // Chart initialization
   // -------------------------------------------------------------------------
   let levelChart = null;
@@ -64,10 +124,12 @@
       });
     });
 
-    // Rainfall dataset
+    // Rainfall dataset. hour_ts is the hour's start; bars are centred on x,
+    // so plot at the half-hour to make each bar span its own hour.
     const rainfallData = weather.map((w) => ({
-      x: w.hour_ts,
+      x: new Date(w.hour_ts).getTime() + HALF_HOUR_MS,
       y: w.precipitation_mm || 0,
+      hour: w.hour_ts,
     }));
 
     const pointColors = levelData.map((pt) => statusColor(pt.status));
@@ -124,6 +186,11 @@
 
     // Threshold lines as flat datasets
     const xs = levelData.map((pt) => new Date(pt.x).getTime()).filter((t) => !isNaN(t));
+
+    // Half the median reading gap, so a tooltip never borrows a point from
+    // a neighbouring reading.
+    const gaps = xs.slice(1).map((t, i) => t - xs[i]).filter((g) => g > 0).sort((a, b) => a - b);
+    lineToleranceMs = gaps.length ? gaps[Math.floor(gaps.length / 2)] / 2 : 10 * 60 * 1000;
     if (xs.length > 0) {
       const x0 = new Date(Math.min(...xs)).toISOString();
       const x1 = new Date(Math.max(...xs)).toISOString();
@@ -141,6 +208,7 @@
           pointRadius: 0,
           yAxisID: "y",
           order: 0,
+          skipTooltip: true,
         });
       });
     }
@@ -170,7 +238,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
+        interaction: { mode: "sameTime", intersect: false },
         plugins: {
           legend: {
             display: true,
@@ -178,15 +246,27 @@
           },
           tooltip: {
             callbacks: {
+              // items[0] is the anchor the sameTime mode picked.
               title: function (items) {
-                const d = new Date(items[0].parsed.x);
-                return d.toLocaleString(undefined, {
+                const fmt = {
                   month: "short",
                   day: "numeric",
                   hour: "2-digit",
                   minute: "2-digit",
                   hour12: false,
-                });
+                };
+                const raw = items[0].raw;
+                if (raw && raw.hour) {
+                  const start = new Date(raw.hour);
+                  const end = new Date(start.getTime() + 2 * HALF_HOUR_MS);
+                  const endStr = end.toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  });
+                  return `${start.toLocaleString(undefined, fmt)}–${endStr}`;
+                }
+                return new Date(items[0].parsed.x).toLocaleString(undefined, fmt);
               },
             },
           },

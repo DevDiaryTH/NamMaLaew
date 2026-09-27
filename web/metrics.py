@@ -222,10 +222,13 @@ def get_series(conn: sqlite3.Connection, range_str: str = "24h") -> dict:
         for row in lr:
             lens_rows.setdefault(row["reading_id"], []).append(dict(row))
 
-    # Weather: precipitation for each hour in range
+    # Weather: precipitation for each hour in range. The table also holds
+    # forecast hours (weather.py fetches forecast_days=1); only hours that
+    # have already started belong on the observed-rain chart.
     weather = conn.execute(
-        "SELECT hour_ts, precipitation_mm FROM weather WHERE hour_ts >= ? ORDER BY hour_ts ASC",
-        (cutoff,),
+        "SELECT hour_ts, precipitation_mm FROM weather "
+        "WHERE hour_ts >= ? AND hour_ts <= ? ORDER BY hour_ts ASC",
+        (cutoff, _now_utc().isoformat(timespec="seconds")),
     ).fetchall()
 
     return {
