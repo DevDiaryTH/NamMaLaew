@@ -182,9 +182,10 @@ def analyze_images(
         content.append({
             "type": "text",
             "text": (
-                "Verified reference examples from THIS site (human-confirmed ground truth). "
-                "Use them to calibrate the level_index scale and what water looks like here; "
-                "they are NOT the current scene — judge the current images on their own evidence."
+                "Verified reference examples from THIS site — captured at earlier moments and "
+                "human-confirmed as ground truth. They show the level_index scale and what water "
+                "looks like here. The current level must be judged only from the current images "
+                "below; never copy a level_index or status directly from an example."
             ),
         })
         for i, ex in enumerate(examples, 1):
@@ -296,7 +297,10 @@ def analyze_images(
         "Judge the current images FIRST on their own visual evidence; use the recent readings "
         "above only as a soft prior. Do not copy previous values: if the images clearly show a "
         "change, report it even if it is large; if the evidence is ambiguous, a result close to "
-        "the recent trend is more likely than a sudden jump.\n"
+        "the recent trend is more likely than a sudden jump. "
+        "Human corrections in the history refer only to those earlier images. "
+        "If the current images show standing water, report the level they show even when recent "
+        "readings, corrections or examples show a lower level.\n"
         if history_text else ""
     )
     prompt = (

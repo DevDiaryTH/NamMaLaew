@@ -219,7 +219,7 @@ class TestRecentContextFeedback:
         assert result is not None
         assert "status=warning" in result   # corrected value
         assert "level=65.0" in result       # corrected level
-        assert "(human-corrected)" in result
+        assert "(human-corrected for that earlier image)" in result
         assert "status=normal" not in result  # original suppressed
 
     def test_correct_feedback_marked(self, db_conn):
@@ -438,6 +438,43 @@ class TestAnalyzeImagesHistoryBlocks:
         prompt = texts[-1]
         # "Recent history:" paragraph should NOT be in the prompt
         assert "Recent history:" not in prompt
+
+    def test_history_present_contains_override_sentences(self):
+        """Both anti-anchoring sentences appear in the prompt when history is provided."""
+        history = "  09:45 UTC (-15m ago)  status=normal  level=25.0  conf=0.90"
+        content = self._call(history_text=history)
+        texts = [b["text"] for b in content if b["type"] == "text"]
+        prompt = texts[-1]
+        assert "Human corrections in the history refer only to those earlier images." in prompt
+        assert (
+            "If the current images show standing water, report the level they show even when "
+            "recent readings, corrections or examples show a lower level."
+        ) in prompt
+
+    def test_examples_present_contains_never_copy_sentence(self):
+        """The examples preamble tells Claude not to copy values from an example."""
+        examples = [{
+            "reading_id": 3,
+            "true_status": "normal",
+            "true_level_index": 10.0,
+            "note": None,
+            "images": [("cam", self.example_img)],
+            "is_night": False,
+        }]
+        content = self._call(examples=examples, history_text=None)
+        texts = [b["text"] for b in content if b["type"] == "text"]
+        preamble = texts[0]
+        assert "never copy" in preamble.lower() or "never copy a level_index" in preamble
+
+    def test_neither_examples_nor_history_no_override_sentences(self):
+        """When both examples and history_text are None, neither override sentence appears."""
+        content = self._call(examples=None, history_text=None)
+        all_text = " ".join(b["text"] for b in content if b["type"] == "text")
+        assert "Human corrections in the history refer only to those earlier images." not in all_text
+        assert (
+            "If the current images show standing water, report the level they show even when "
+            "recent readings, corrections or examples show a lower level."
+        ) not in all_text
 
 
 # ---------------------------------------------------------------------------

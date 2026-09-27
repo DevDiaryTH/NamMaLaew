@@ -19,6 +19,10 @@ _VALID_STATUSES = frozenset({"normal", "warning", "critical"})
 # The last bucket's upper bound is 1.01 so that confidence == 1.0 is included.
 CONFIDENCE_BUCKETS = [(0.0, 0.5), (0.5, 0.7), (0.7, 0.85), (0.85, 1.01)]
 
+# Minimum age a reading must have before its example is eligible for selection.
+# Prevents a freshly-made correction from immediately anchoring Claude's output.
+EXAMPLE_MIN_AGE_HOURS = 6
+
 
 def calibration_table(conn=None, min_samples: int = 5) -> list[dict]:
     """Return calibration accuracy per confidence bucket.
@@ -356,7 +360,7 @@ def recent_context(
         if verdict == "wrong":
             display_status = row["true_status"] or row["status"]
             display_level = row["true_level_index"]
-            annotation = " (human-corrected)"
+            annotation = " (human-corrected for that earlier image)"
         elif verdict == "correct":
             display_status = row["status"]
             display_level = row["level_index"]
@@ -392,13 +396,29 @@ def select_examples(
     conn=None,
     current_is_night: bool | None = None,
     k: int | None = None,
+    now: datetime | None = None,
 ) -> list[dict]:
     """Return up to k examples whose files still exist, for few-shot calibration.
+
+    Only readings that are at least EXAMPLE_MIN_AGE_HOURS old (relative to now)
+    are eligible.  This prevents a freshly-made correction from immediately
+    anchoring Claude's output to the corrected label.
 
     Selection order: first pick one per true_status (critical, warning, normal),
     preferring same day/night as current when current_is_night is not None,
     then fill remaining slots newest-first.  Deterministic.
+
+    Args:
+        conn: optional DB connection.
+        current_is_night: when not None, prefer examples with matching day/night.
+        k: maximum number of examples to return; defaults to the
+            learning_max_examples setting.
+        now: reference time (UTC); defaults to datetime.now(timezone.utc).
+            Provided for deterministic tests.
     """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
     if k is None:
         with db._conn(conn) as c:
             k = settings.get_int("learning_max_examples", conn=c)
@@ -406,16 +426,21 @@ def select_examples(
     if k == 0:
         return []
 
+    cutoff = (now - timedelta(hours=EXAMPLE_MIN_AGE_HOURS)).isoformat(timespec="seconds")
+
     with db._conn(conn) as c:
         rows = c.execute(
             """SELECT f.reading_id, f.true_status, f.true_level_index, f.note,
                       f.example_dir, f.ts,
                       MAX(lr.is_night) AS is_night
                FROM feedback f
+               JOIN readings r ON r.id = f.reading_id
                LEFT JOIN lens_readings lr ON lr.reading_id = f.reading_id AND lr.ok = 1
                WHERE f.is_example = 1
+                 AND r.ts <= ?
                GROUP BY f.reading_id
-               ORDER BY f.ts DESC"""
+               ORDER BY f.ts DESC""",
+            (cutoff,),
         ).fetchall()
 
     snap_dir = db.snapshot_dir()
