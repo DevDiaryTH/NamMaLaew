@@ -124,20 +124,6 @@ Current images to analyze:
 
 Claude is explicitly instructed to judge each set of images on their own visual evidence first, and to use the history only as a prior: a clear change in the images should be reported even if it is large; history only nudges the result when the image evidence is ambiguous. Set `learning_use_history` to `0` to disable.
 
-### Learned rain-to-water response
-
-Once latitude/longitude are set, the monitor keeps hourly rainfall in the `weather` table (past 2 days plus a 2-day forecast, refreshed every 30 min). After each cycle it refits, at most once a day, a straight line `Δlevel = a · rain_3h + b`. The line comes from the site's own history:
-
-- each sample pairs the rain that fell in the 3 hours before an hour H with the change in `level_index` from H to H+2h;
-- the level used is the reading nearest to each time, within ±15 min;
-- human-corrected levels from feedback replace the model's values.
-
-The fit is used only after at least 20 samples with rain. Until then the overview shows how many rain events have been collected ("k/20"). The result is stored in `runtime_state` under `rain_model`.
-
-With a fitted model, `predict_rise` sums the forecast rain for the next 3 whole hours. It then predicts the rise as `max(0, a · rain + b)`, and the overview's rain tile shows it together with the number of events and R². The model was fitted on the rise over the 2 hours after the rain, so read the prediction as "roughly how much this rain will lift the water", not as an exact time. When the recent-trend ETA is unavailable, the overview shows a rain-based ETA instead (labelled "rain forecast").
-
-The early warning (`alert_on_forecast`, default off) sends a Telegram message when the current level is below `level_warning` and the predicted level reaches it. It sends at most one message every 3 hours. It never changes the reading's status and never sounds the siren.
-
 ### Calibrated confidence
 
 Claude returns a `confidence` value (0–1) with every reading, but self-reported confidence is not always well-calibrated — a model may say 0.9 when it is actually right only 70% of the time in that range.

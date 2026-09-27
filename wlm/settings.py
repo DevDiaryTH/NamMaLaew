@@ -61,8 +61,8 @@ SPECS: list[SettingSpec] = [
                 "Claude model (CLI alias: sonnet / opus / haiku, or full model id)",
                 hint="Sonnet is the default. Haiku costs less per check."),
     SettingSpec("latitude", "LATITUDE", "", "str", "Latitude for rainfall (blank = off)",
-                hint="Your site's coordinates, for the rainfall chart and the learned rain-to-water model. "
-                     "Rain changes alerts only through the optional forecast early warning (Learning)."),
+                hint="Your site's coordinates, for the rainfall chart and the recent-rain line in the "
+                     "history sent to Claude (learning_use_history)."),
     SettingSpec("longitude", "LONGITUDE", "", "str", "Longitude for rainfall (blank = off)"),
     # --- Siren (MQTT) ---
     SettingSpec("siren_enabled", None, "0", "bool", "Sound the MQTT siren on alerts"),
@@ -89,11 +89,6 @@ SPECS: list[SettingSpec] = [
                      "to Claude before the current images. Claude uses them as a soft prior — "
                      "it will still report a sudden change when the images show one — which "
                      "helps keep level_index consistent across consecutive checks."),
-    SettingSpec("alert_on_forecast", None, "0", "bool",
-                "Early warning when forecast rain is predicted to reach the warning level",
-                hint="Uses the rain-to-water response learned from this site's history (needs "
-                     "latitude/longitude and at least 20 past rain events). Sends at most one "
-                     "Telegram message every 3 hours."),
     SettingSpec("min_confidence", None, "0.5", "float",
                 "Force a re-check before a CRITICAL alert when calibrated confidence is below this (0 = off)",
                 hint="When the calibrated confidence of a CRITICAL reading is below this threshold, "

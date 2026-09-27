@@ -21,7 +21,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from wlm import alerts, capture, db, lines as wlm_lines, rain_model, settings, siren
+from wlm import alerts, capture, db, lines as wlm_lines, settings, siren
 from wlm.analysis import analyze_images
 from wlm.overlay import draw_lines
 from wlm.weather import refresh_weather
@@ -301,19 +301,6 @@ def run_cycle(
             refresh_weather(conn=conn)
         except Exception as exc:
             logger.warning("Weather refresh error: %s", exc)
-
-        # ---- learned rain-to-water model ----
-        try:
-            rain_model.maybe_refit(conn)
-            alerts.maybe_send_forecast_warning(
-                rain_model.predict_rise(conn),
-                level_warning=settings.get_float("level_warning", conn=conn),
-                enabled=settings.get_bool("alert_on_forecast", conn=conn),
-                dry_run=dry_run,
-                conn=conn,
-            )
-        except Exception as exc:
-            logger.warning("Rain model error: %s", exc)
 
         # ---- prune ----
         try:

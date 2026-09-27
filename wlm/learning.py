@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 import shutil
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from wlm import db, settings
 from wlm.analysis import normalize_confidence

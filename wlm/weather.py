@@ -38,7 +38,7 @@ def refresh_weather(conn=None) -> None:
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        f"&hourly=precipitation&past_days=2&forecast_days=2&timezone=UTC"
+        f"&hourly=precipitation&past_days=2&forecast_days=1&timezone=UTC"
     )
     try:
         req = urllib.request.Request(url)
