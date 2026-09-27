@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -269,7 +268,7 @@ class TestSelectExamples:
         self._make_example(conn, snap, "warning", 55.0)
         self._make_example(conn, snap, "critical", 95.0)
 
-        result = learning.select_examples(conn=conn, k=3, now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        result = learning.select_examples(conn=conn, k=3)
         statuses = [e["true_status"] for e in result]
         assert set(statuses) == {"normal", "warning", "critical"}
         assert statuses[0] == "critical"
@@ -284,7 +283,7 @@ class TestSelectExamples:
             learning.record_feedback(rid, "correct", true_status="normal",
                                      true_level_index=float(i * 5), as_example=True, conn=conn)
 
-        result = learning.select_examples(conn=conn, k=2, now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        result = learning.select_examples(conn=conn, k=2)
         assert len(result) <= 2
 
     def test_missing_files_skipped(self, db_with_snap):
@@ -294,7 +293,7 @@ class TestSelectExamples:
         import shutil
         shutil.rmtree(snap / "examples" / str(rid))
 
-        result = learning.select_examples(conn=conn, k=5, now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        result = learning.select_examples(conn=conn, k=5)
         assert all(e["reading_id"] != rid for e in result)
 
     def test_example_rejected_when_snapshots_gone(self, db_with_snap):
@@ -311,11 +310,10 @@ class TestSelectExamples:
         rid_day = self._make_example(conn, snap, "normal", 10.0, is_night=0)
         rid_night = self._make_example(conn, snap, "normal", 15.0, is_night=1)
 
-        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
-        result_day = learning.select_examples(conn=conn, k=1, current_is_night=False, now=now)
+        result_day = learning.select_examples(conn=conn, k=1, current_is_night=False)
         assert result_day[0]["reading_id"] == rid_day
 
-        result_night = learning.select_examples(conn=conn, k=1, current_is_night=True, now=now)
+        result_night = learning.select_examples(conn=conn, k=1, current_is_night=True)
         assert result_night[0]["reading_id"] == rid_night
 
     def test_fills_slots_after_one_per_status(self, db_with_snap):
@@ -324,73 +322,10 @@ class TestSelectExamples:
         rid2 = self._make_example(conn, snap, "normal", 10.0)
         rid3 = self._make_example(conn, snap, "normal", 20.0)
 
-        result = learning.select_examples(conn=conn, k=3, now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        result = learning.select_examples(conn=conn, k=3)
         ids = [e["reading_id"] for e in result]
         assert rid1 in ids
         assert len(result) == 3
-
-
-# ---------------------------------------------------------------------------
-# select_examples: minimum age filter
-# ---------------------------------------------------------------------------
-
-class TestExampleMinAge:
-    """Examples are only returned once the underlying reading is at least EXAMPLE_MIN_AGE_HOURS old."""
-
-    def _make_example_backdated(self, conn, snap: Path, status: str, level: float,
-                                 ts_str: str) -> int:
-        """Create an example and then back-date the reading's ts."""
-        fname = f"age_{status}_{level}.jpg"
-        _make_jpeg(snap / fname)
-        rid = _seed_reading(conn, status=status, level_index=level)
-        _seed_lens_reading(conn, rid, label="cam", snapshot_path=fname)
-        learning.record_feedback(rid, "correct", true_status=status, true_level_index=level,
-                                 as_example=True, conn=conn)
-        conn.execute("UPDATE readings SET ts = ? WHERE id = ?", (ts_str, rid))
-        conn.commit()
-        return rid
-
-    def test_10_min_old_excluded(self, db_with_snap):
-        conn, snap = db_with_snap
-        now = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        from datetime import timedelta
-        ts = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
-        self._make_example_backdated(conn, snap, "normal", 10.0, ts)
-
-        result = learning.select_examples(conn=conn, k=5, now=now)
-        assert result == []
-
-    def test_7_h_old_included(self, db_with_snap):
-        conn, snap = db_with_snap
-        now = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        from datetime import timedelta
-        ts = (now - timedelta(hours=7)).isoformat(timespec="seconds")
-        rid = self._make_example_backdated(conn, snap, "normal", 10.0, ts)
-
-        result = learning.select_examples(conn=conn, k=5, now=now)
-        assert len(result) == 1
-        assert result[0]["reading_id"] == rid
-
-    def test_exactly_6_h_included(self, db_with_snap):
-        conn, snap = db_with_snap
-        now = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        from datetime import timedelta
-        ts = (now - timedelta(hours=6)).isoformat(timespec="seconds")
-        rid = self._make_example_backdated(conn, snap, "normal", 10.0, ts)
-
-        result = learning.select_examples(conn=conn, k=5, now=now)
-        assert len(result) == 1
-        assert result[0]["reading_id"] == rid
-
-    def test_5_h_59_m_excluded(self, db_with_snap):
-        conn, snap = db_with_snap
-        now = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        from datetime import timedelta
-        ts = (now - timedelta(hours=5, minutes=59)).isoformat(timespec="seconds")
-        self._make_example_backdated(conn, snap, "normal", 10.0, ts)
-
-        result = learning.select_examples(conn=conn, k=5, now=now)
-        assert result == []
 
 
 # ---------------------------------------------------------------------------

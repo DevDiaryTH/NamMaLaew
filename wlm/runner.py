@@ -189,22 +189,25 @@ def run_cycle(
             except Exception as exc:
                 logger.warning("Failed to load history context: %s", exc)
 
-        if overlay_frames:
+        # Fetch the most recent known reading BEFORE we insert the new one (used for safety re-check).
+        try:
+            prev_reading = wlm_learning.previous_reading(conn=conn)
+        except Exception as exc:
+            logger.warning("Failed to fetch previous reading for safety re-check: %s", exc)
+            prev_reading = None
+
+        # Determine which frames to send to Claude (overlay when available).
+        analysis_frames = overlay_frames or frames
+
+        if analysis_frames:
             result, input_tokens, output_tokens, cost_usd = analyze_images(
-                overlay_frames, conn=conn, lens_lines=all_lines, examples=examples or None,
-                history_text=history_text,
-            )
-        elif frames:
-            result, input_tokens, output_tokens, cost_usd = analyze_images(
-                frames, conn=conn, lens_lines=all_lines, examples=examples or None,
+                analysis_frames, conn=conn, lens_lines=all_lines, examples=examples or None,
                 history_text=history_text,
             )
         else:
             from wlm.analysis import _unknown_result
             result = _unknown_result("All snapshot captures failed")
             input_tokens, output_tokens, cost_usd = 0, 0, None
-
-        analysis_ms = int((time.monotonic() - analysis_start) * 1000)
 
         model_status = result.get("level_status", "unknown")
         level_index = result.get("level_index")
@@ -213,6 +216,56 @@ def run_cycle(
             model_status, level_index, per_lens=per_lens_result,
             lens_lines=all_lines, failed_labels=failed_labels, conn=conn,
         )
+
+        # ---- safety re-check ----
+        # When learning context was actually sent and frames exist, check whether the
+        # answer dropped suspiciously compared with the previous reading.  If so,
+        # re-run without any learning context and keep the higher result so that a
+        # wrongly-labelled example can never silence a flood alert.
+        used_learning = bool(examples) or (history_text is not None)
+        if analysis_frames and used_learning:
+            try:
+                if wlm_learning.needs_safety_recheck(prev_reading, final_status, level_index,
+                                                     used_examples=bool(examples)):
+                    plain_result, p_in_tok, p_out_tok, p_cost = analyze_images(
+                        analysis_frames, conn=conn, lens_lines=all_lines,
+                        examples=None, history_text=None,
+                    )
+                    # Sum tokens and cost from both calls.
+                    input_tokens += p_in_tok or 0
+                    output_tokens += p_out_tok or 0
+                    if cost_usd is None:
+                        cost_usd = p_cost
+                    elif p_cost is not None:
+                        cost_usd += p_cost
+
+                    plain_model_status = plain_result.get("level_status", "unknown")
+                    plain_level_index = plain_result.get("level_index")
+                    plain_per_lens = plain_result.get("per_lens", [])
+                    plain_final_status = alerts.derive_final_status(
+                        plain_model_status, plain_level_index, per_lens=plain_per_lens,
+                        lens_lines=all_lines, failed_labels=failed_labels, conn=conn,
+                    )
+
+                    winner = wlm_learning.pick_higher(
+                        (final_status, level_index),
+                        (plain_final_status, plain_level_index),
+                    )
+                    kept = "plain" if winner == "b" else "learned"
+                    logger.info(
+                        "Safety re-check without learning context: learned=%s/%s plain=%s/%s → kept %s",
+                        final_status, level_index, plain_final_status, plain_level_index, kept,
+                    )
+                    if winner == "b":
+                        result = plain_result
+                        model_status = plain_model_status
+                        level_index = plain_level_index
+                        per_lens_result = plain_per_lens
+                        final_status = plain_final_status
+            except Exception as exc:
+                logger.warning("Safety re-check failed, keeping first result: %s", exc)
+
+        analysis_ms = int((time.monotonic() - analysis_start) * 1000)
         failed_deciding = sorted(
             label for label in failed_labels if "critical" in all_lines.get(label, {})
         )

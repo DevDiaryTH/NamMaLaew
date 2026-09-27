@@ -101,7 +101,9 @@ When examples are present, the runner prepends them to every Claude call as veri
 
 The `learning_max_examples` setting (default 3) controls how many examples are sent. Selection picks one example per status level (critical → warning → normal), preferring the same day/night mode as the current capture, then fills remaining slots with the newest examples. Setting `learning_max_examples` to 0 disables the feature entirely.
 
-Examples are sent to Claude only once the reading is at least 6 hours old, and Claude is told to judge the current level only from the current images and never copy a value directly from an example.
+Claude is told to judge the current level only from the current images and never copy a value directly from an example.
+
+**Safety re-check:** after every call that used examples or history, the runner compares the result with the most recent known reading (within the past 60 minutes). If the new status rank is lower than the previous one, or if the level index dropped by 30 points or more, the runner makes a second Claude call with the same images but no learning context at all. Both results are compared and the higher one — the one with the greater status rank, or the higher level index on a tie — is used for the stored reading, alerts, and everything downstream. An extra Claude call therefore happens only when the learned answer looks suspiciously low. This ensures that a wrong human label can never silently suppress a flood alert.
 
 Reference examples survive `prune_snapshots()` because pruning only removes JPEG files directly in `snapshots/` (non-recursive), while examples are stored in `snapshots/examples/<id>/`.
 

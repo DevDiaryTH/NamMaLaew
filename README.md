@@ -217,7 +217,7 @@ Needs zigbee2mqtt + an MQTT broker already on your LAN.
 | After editing `.env` | `docker compose up -d` |
 | Watch logs | `docker compose logs -f monitor` |
 | Mark a reading right or wrong | **TIMELINE** → open the reading → **◆ FEEDBACK** → **CORRECT** or **WRONG** (with **TRUE STATUS** and **TRUE LEVEL INDEX**) → **SAVE FEEDBACK** |
-| Add a reference example for Claude | Same form → tick **USE AS REFERENCE EXAMPLE**. Only while the reading's snapshots still exist (`SNAPSHOT_RETENTION_HOURS`, default 7 days). Claude receives an example only once its reading is at least 6 hours old. Manage them in **SETTINGS** → **◆ LEARNING** |
+| Add a reference example for Claude | Same form → tick **USE AS REFERENCE EXAMPLE**. Only while the reading's snapshots still exist (`SNAPSHOT_RETENTION_HOURS`, default 7 days). If an answer that used examples or history is lower than the previous reading, Claude checks again without them and the higher result is kept. Manage them in **SETTINGS** → **◆ LEARNING** |
 
 **What triggers alerts:**
 
