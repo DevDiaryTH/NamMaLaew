@@ -38,6 +38,23 @@ def _cap_text(text: object, limit: int) -> object:
     return text[:cut] + "…"
 
 
+def normalize_confidence(value: object) -> float | None:
+    """Return confidence on the 0-1 scale.
+
+    The model sometimes answers on a 0-100 scale (e.g. 78 instead of 0.78); values
+    above 1 are treated as percentages. The result is clamped to 0-1.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v > 1.0:
+        v = v / 100.0
+    return max(0.0, min(1.0, v))
+
+
 # Legacy pricing table kept for backward compatibility (test_core_status uses it).
 # With a Claude subscription the CLI reports total_cost_usd which is what the
 # dashboard stores; this table is no longer used for new analysis calls.
@@ -116,6 +133,8 @@ def analyze_images(
     frames: list[tuple[str, Path]],
     conn=None,
     lens_lines: dict | None = None,
+    examples: list[dict] | None = None,
+    history_text: str | None = None,
 ) -> tuple[dict, int, int, float | None]:
     """Analyze all lens images in one Claude Code CLI call.
 
@@ -127,6 +146,11 @@ def analyze_images(
             for lenses that have user-drawn alert lines.  Used to build per-lens
             descriptions in the prompt.  When None, falls back to the old
             no-lines behaviour.
+        examples: optional list of verified reference examples from learning.select_examples().
+            When non-empty, prepended as few-shot calibration images before the current frames.
+        history_text: optional summary of recent readings produced by learning.recent_context().
+            When given, inserted between the examples and the current images so Claude has
+            recent context; behaviour is unchanged when None.
 
     Returns (result_dict, input_tokens, output_tokens, cost_usd).
     result_dict always has level_status, level_index (clamped 0-100 or None),
@@ -150,8 +174,53 @@ def analyze_images(
     if lens_lines is None:
         lens_lines = {}
 
-    # Build content blocks: label text block (with line description) before each image
+    # Build content blocks
     content: list[dict] = []
+
+    # Prepend verified reference examples when available
+    if examples:
+        content.append({
+            "type": "text",
+            "text": (
+                "Verified reference examples from THIS site — captured at earlier moments and "
+                "human-confirmed as ground truth. They show the level_index scale and what water "
+                "looks like here. The current level must be judged only from the current images "
+                "below; never copy a level_index or status directly from an example."
+            ),
+        })
+        for i, ex in enumerate(examples, 1):
+            note_part = f", note: {ex['note']}" if ex.get("note") else ""
+            content.append({
+                "type": "text",
+                "text": (
+                    f"Example {i} — true status: {ex['true_status']}, "
+                    f"true level_index: {ex['true_level_index']}{note_part}"
+                ),
+            })
+            for label, path in ex.get("images", []):
+                image_b64 = base64.standard_b64encode(path.read_bytes()).decode()
+                content.append({"type": "text", "text": f"Example {i} lens '{label}':"})
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": image_b64,
+                    },
+                })
+
+    # Recent-history context block (between examples and current images)
+    if history_text:
+        content.append({
+            "type": "text",
+            "text": "Recent readings at this site (context only):\n" + history_text,
+        })
+
+    # Separator appears whenever the model has seen examples or history
+    if examples or history_text:
+        content.append({"type": "text", "text": "Current images to analyze:"})
+
+    # Current-lens blocks: label text block (with line description) before each image
     for label, path in frames:
         lines_for_lens = lens_lines.get(label, {})
         if lines_for_lens:
@@ -219,17 +288,34 @@ def analyze_images(
         "  Do not describe things unrelated to water (car colors, furniture, background scenery).\n"
     )
 
+    examples_sentence = (
+        " Use the verified reference examples above to calibrate your level_index scale for this site."
+        if examples else ""
+    )
+    history_paragraph = (
+        "\nRecent history: water levels usually change gradually between readings. "
+        "Judge the current images FIRST on their own visual evidence; use the recent readings "
+        "above only as a soft prior. Do not copy previous values: if the images clearly show a "
+        "change, report it even if it is large; if the evidence is ambiguous, a result close to "
+        "the recent trend is more likely than a sudden jump. "
+        "Human corrections in the history refer only to those earlier images. "
+        "If the current images show standing water, report the level they show even when recent "
+        "readings, corrections or examples show a lower level.\n"
+        if history_text else ""
+    )
     prompt = (
         "You are a water-level safety monitor analyzing security camera images.\n"
         "Note: cameras may produce night-vision IR grayscale images — this is normal.\n"
         "If you cannot see water or cannot determine the level, use level_status='unknown' (level_index is then ignored; set it to 0).\n\n"
         f"Reference description (defines the level_index 0-100 scale):\n{reference_description}\n\n"
-        "level_index scale: 0=completely dry (no water anywhere), 100=worst flooding as defined in the reference description above.\n\n"
+        "level_index scale: 0=completely dry (no water anywhere), 100=worst flooding as defined in the reference description above.\n"
+        "confidence is a fraction from 0.0 to 1.0 (e.g. 0.78), not a percentage.\n\n"
         "For each lens, estimate water_coverage_pct = percentage of the visible ground area in that lens covered by standing water (0-100).\n\n"
         + lines_section
         + low_light_section
         + output_style_section
-        + "\nAnalyze all provided images together and return a JSON object matching the schema exactly."
+        + history_paragraph
+        + f"\nAnalyze all provided images together and return a JSON object matching the schema exactly.{examples_sentence}"
     )
     content.append({"type": "text", "text": prompt})
 
@@ -335,10 +421,12 @@ def analyze_images(
     for lens in structured.get("per_lens") or []:
         lens["observation"] = _cap_text(lens.get("observation"), _CAP_OBS)
 
+    structured["confidence"] = normalize_confidence(structured.get("confidence"))
+
     logger.info(
         "Analysis: status=%s level_index=%s confidence=%.2f",
         structured.get("level_status"),
         structured.get("level_index"),
-        structured.get("confidence", 0.0),
+        structured.get("confidence") or 0.0,
     )
     return structured, input_tokens, output_tokens, cost_usd

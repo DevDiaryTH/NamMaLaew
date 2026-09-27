@@ -87,3 +87,57 @@ Measured in production: ~6,000 input + ~1,000 output tokens per cycle, ~14 secon
 At a 10-minute interval = 144 cycles/day ≈ $0.02 API-equivalent per cycle (model `sonnet`).
 
 Switch to `haiku` or increase `capture_interval_minutes` to reduce quota usage.
+
+## Human feedback and few-shot learning
+
+After each reading you can open its detail page and leave feedback: mark it **correct** (Claude got it right) or **wrong** (providing the true status and level index). Optionally tick **Use as reference example** to promote the reading's image(s) to a persistent reference set stored under `snapshots/examples/<reading_id>/`.
+
+When examples are present, the runner prepends them to every Claude call as verified ground-truth images:
+
+1. A text preamble explains that these are human-confirmed examples from the same site.
+2. Each example appears as a label block + its image(s).
+3. A "Current images to analyze:" separator precedes the live frames.
+4. One sentence at the end of the prompt tells Claude to use the examples for scale calibration.
+
+The `learning_max_examples` setting (default 3) controls how many examples are sent. Selection picks one example per status level (critical → warning → normal), preferring the same day/night mode as the current capture, then fills remaining slots with the newest examples. Setting `learning_max_examples` to 0 disables the feature entirely.
+
+Claude is told to judge the current level only from the current images and never copy a value directly from an example.
+
+**Safety re-check:** after every call that used examples or history, the runner compares the result with the most recent known reading (within the past 60 minutes). If the new status rank is lower than the previous one, or if the level index dropped by 30 points or more, the runner makes a second Claude call with the same images but no learning context at all. Both results are compared and the higher one — the one with the greater status rank, or the higher level index on a tie — is used for the stored reading, alerts, and everything downstream. An extra Claude call therefore happens only when the learned answer looks suspiciously low. This ensures that a wrong human label can never silently suppress a flood alert.
+
+Reference examples survive `prune_snapshots()` because pruning only removes JPEG files directly in `snapshots/` (non-recursive), while examples are stored in `snapshots/examples/<id>/`.
+
+### Recent-history context
+
+When `learning_use_history` is enabled (default on), the runner adds a short text summary of the last few readings to each Claude call. The summary covers readings from the past 2 hours (up to 6, excluding `unknown`), listed chronologically with time, status, level index, and confidence. If a reading has feedback, the summary uses the human-corrected or human-confirmed values instead and marks them accordingly.
+
+A "Rain in last 3h" line is appended when weather precipitation data is available for the site.
+
+The history block appears in the Claude prompt between the reference examples and the current images:
+
+```
+[Reference examples (if any)]
+Recent readings at this site (context only):
+  HH:MM UTC (-Xm ago)  status=...  level=...  conf=...%
+  ...
+Rain in last 3h: X.X mm  (if weather data present)
+Current images to analyze:
+[Current lens images]
+[Analysis prompt — includes a paragraph asking Claude to treat the history as a soft prior]
+```
+
+Claude is explicitly instructed to judge each set of images on their own visual evidence first, and to use the history only as a prior: a clear change in the images should be reported even if it is large; history only nudges the result when the image evidence is ambiguous. Corrections are labelled as applying to that earlier image, and Claude is instructed that current images showing standing water take precedence over lower values in the history. Set `learning_use_history` to `0` to disable.
+
+### Calibrated confidence
+
+Claude returns a `confidence` value (0–1) with every reading, but self-reported confidence is not always well-calibrated — a model may say 0.9 when it is actually right only 70% of the time in that range.
+
+The monitor collects human feedback (correct / wrong) and groups past readings into four confidence buckets: 0–50%, 50–70%, 70–85%, 85–100%. For each bucket it computes the observed accuracy (fraction of readings where the model's status matched the human verdict). Once a bucket has at least 5 samples it is "reliable" and its observed accuracy replaces the raw confidence as the `calibrated_confidence` value stored on the reading.
+
+`calibrated_confidence` is used in two ways:
+
+1. **Dashboard display** — the overview shows the calibrated value (labelled "CALIBRATED") when it is available, and an "UNCERTAIN" badge when it is below `min_confidence`. The reading detail page shows both raw and calibrated values side by side.
+
+2. **Alert gating** — when `min_confidence > 0` and a CRITICAL reading's calibrated confidence is below that threshold, the reading enters the same pending/re-check path as `critical_confirm` (even when `critical_confirm` is off). A second CRITICAL reading is required before the siren sounds and the Telegram message is sent. Low confidence never lowers a status, never suppresses a confirmed or sustained critical, and has no effect on warning, normal, or unknown readings.
+
+The Settings page's Accuracy Statistics card shows the overall status accuracy, mean absolute level error, and the per-bucket calibration table.

@@ -22,8 +22,16 @@
         {% endif %}
       </p>
       <div class="hero-meta">
-        {% if s and s.confidence %}
-          <span>{{ "%.0f"|format(s.confidence * 100) }}% CONFIDENCE</span> &nbsp;
+        {% if s %}
+          {% if s.calibrated_confidence is defined and s.calibrated_confidence is not none %}
+            <span>{{ "%.0f"|format(s.calibrated_confidence * 100) }}% CONFIDENCE (CALIBRATED)</span>
+            {% if status != 'unknown' and min_confidence > 0 and s.calibrated_confidence < min_confidence %}
+              &nbsp;<span class="status-badge badge-stale">UNCERTAIN</span>
+            {% endif %}
+          {% elif s.confidence is defined and s.confidence %}
+            <span>{{ "%.0f"|format(s.confidence * 100) }}% CONFIDENCE</span>
+          {% endif %}
+          &nbsp;
         {% endif %}
         {% if s and s.ts %}
           <span data-ts="{{ s.ts }}">{{ s.ts }}</span>

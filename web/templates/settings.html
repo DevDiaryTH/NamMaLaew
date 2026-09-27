@@ -53,6 +53,7 @@
     ('Monitor', ['capture_interval_minutes','level_warning','level_critical','claude_model','reference_description']),
     ('Location', ['latitude','longitude']),
     ('Siren (MQTT)', ['siren_enabled','mqtt_host','mqtt_port','mqtt_username','mqtt_password','siren_topic','siren_seconds','siren_on_warning']),
+    ('Learning', ['learning_max_examples','learning_use_history','min_confidence']),
   ] %}
 
   {% for group_name, keys in groups %}
@@ -140,6 +141,115 @@
     <span class="save-stamp" id="settings-saved" style="display:none;">SAVED ✱</span>
   </div>
 </form>
+
+<!-- Learning / Reference Examples -->
+<div class="poster-block">
+  <h3>◆ LEARNING</h3>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">
+    HUMAN-VERIFIED READINGS USED AS FEW-SHOT CALIBRATION IMAGES IN EVERY CLAUDE ANALYSIS.
+    TOTAL FEEDBACK RECORDS: <strong>{{ feedback_count }}</strong>.
+  </p>
+  {% if examples %}
+  <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm);">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">READING</th>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">STATUS</th>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">LEVEL</th>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">NOTE</th>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">IMAGE</th>
+        <th style="padding:var(--space-xs) var(--space-sm);"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for ex in examples %}
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          <a href="/reading/{{ ex.reading_id }}">#{{ ex.reading_id }}</a>
+        </td>
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          <span class="status-sticker status-{{ ex.true_status }}">{{ ex.true_status | upper }}</span>
+        </td>
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          {{ "%.1f"|format(ex.true_level_index) if ex.true_level_index is not none else "—" }}
+        </td>
+        <td style="padding:var(--space-xs) var(--space-sm);">{{ ex.note or "—" }}</td>
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          {% if ex.thumb_path %}
+          <a href="/snapshots/{{ ex.thumb_path }}" target="_blank">
+            <img src="/snapshots/{{ ex.thumb_path }}" style="height:48px;width:auto;object-fit:cover;"
+                 alt="example" onerror="this.replaceWith(document.createTextNode('[no image]'))" />
+          </a>
+          {% else %}—{% endif %}
+        </td>
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          <form method="POST" action="/learning/examples/{{ ex.reading_id }}/remove"
+                style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button type="submit" class="btn btn-secondary btn-sm"
+                    onclick="return confirm('Remove this example?')">REMOVE</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="font-size:var(--text-sm);color:var(--text-muted);">
+    NO REFERENCE EXAMPLES YET. OPEN A READING AND TICK "USE AS REFERENCE EXAMPLE" IN THE FEEDBACK FORM.
+  </p>
+  {% endif %}
+</div>
+
+<!-- Accuracy Stats -->
+{% if accuracy %}
+<div class="poster-block">
+  <h3>◆ ACCURACY STATISTICS</h3>
+  <p style="font-size:var(--text-sm);margin-bottom:var(--space-md);">
+    BASED ON <strong>{{ accuracy.feedback_count }}</strong> FEEDBACK RECORD(S).
+    {% if accuracy.status_accuracy is not none %}
+      STATUS ACCURACY: <strong>{{ "%.0f"|format(accuracy.status_accuracy * 100) }}%</strong>.
+    {% else %}
+      STATUS ACCURACY: — (NO FEEDBACK YET).
+    {% endif %}
+    {% if accuracy.level_mae is not none %}
+      LEVEL MAE: <strong>{{ "%.1f"|format(accuracy.level_mae) }}</strong>.
+    {% endif %}
+  </p>
+  {% if accuracy.calibration %}
+  <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm);">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">CONFIDENCE BUCKET</th>
+        <th style="text-align:right;padding:var(--space-xs) var(--space-sm);">SAMPLES</th>
+        <th style="text-align:right;padding:var(--space-xs) var(--space-sm);">ACCURACY</th>
+        <th style="text-align:left;padding:var(--space-xs) var(--space-sm);">RELIABLE?</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in accuracy.calibration %}
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          {{ "%.0f"|format(row.lo * 100) }}%–{{ "%.0f"|format([row.hi, 1.0]|min * 100) }}%
+        </td>
+        <td style="text-align:right;padding:var(--space-xs) var(--space-sm);">{{ row.n }}</td>
+        <td style="text-align:right;padding:var(--space-xs) var(--space-sm);">
+          {% if row.accuracy is not none %}{{ "%.0f"|format(row.accuracy * 100) }}%{% else %}—{% endif %}
+        </td>
+        <td style="padding:var(--space-xs) var(--space-sm);">
+          {% if row.reliable %}
+            <span class="status-badge badge-normal">YES</span>
+          {% else %}
+            <span style="color:var(--text-muted);">NEEDS ≥5 SAMPLES</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
 
 <!-- Test Telegram -->
 <div class="poster-block">

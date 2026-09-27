@@ -472,3 +472,20 @@ class TestLensFailureAlert:
             self._run(tmp_db, ["carport"], dry_run=True)
         assert self._rows(tmp_db, "failure") == []
         assert db.get_state("consecutive_lens_failures", default="", conn=tmp_db) == ""
+
+
+class TestHeartbeat:
+    def test_heartbeat_sent_once_per_day(self, tmp_db):
+        """A second cycle in the heartbeat hour must not send another heartbeat."""
+        db.set_setting("heartbeat_hour", str(datetime.now().hour), conn=tmp_db)
+        db.set_setting("telegram_bot_token", "test_token_abc", conn=tmp_db)
+        db.set_setting("telegram_chat_id", "99999", conn=tmp_db)
+        with patch("wlm.alerts.tg.send_message") as mock_msg:
+            mock_msg.return_value = (True, None)
+            maybe_send_heartbeat(conn=tmp_db)
+            maybe_send_heartbeat(conn=tmp_db)
+
+        assert mock_msg.call_count == 1
+        rows = tmp_db.execute("SELECT * FROM alerts WHERE kind='heartbeat'").fetchall()
+        assert len(rows) == 1
+        assert db.get_state("last_heartbeat_date", conn=tmp_db) == datetime.now().strftime("%Y-%m-%d")

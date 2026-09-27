@@ -61,7 +61,8 @@ SPECS: list[SettingSpec] = [
                 "Claude model (CLI alias: sonnet / opus / haiku, or full model id)",
                 hint="Sonnet is the default. Haiku costs less per check."),
     SettingSpec("latitude", "LATITUDE", "", "str", "Latitude for rainfall (blank = off)",
-                hint="Your site's coordinates, for the rainfall chart only. They don't change alerts."),
+                hint="Your site's coordinates, for the rainfall chart and the recent-rain line in the "
+                     "history sent to Claude (learning_use_history)."),
     SettingSpec("longitude", "LONGITUDE", "", "str", "Longitude for rainfall (blank = off)"),
     # --- Siren (MQTT) ---
     SettingSpec("siren_enabled", None, "0", "bool", "Sound the MQTT siren on alerts"),
@@ -77,6 +78,22 @@ SPECS: list[SettingSpec] = [
                 "Require a second CRITICAL reading before critical alerts"),
     SettingSpec("critical_confirm_recheck_seconds", None, "120", "int",
                 "Seconds before re-checking an unconfirmed CRITICAL"),
+    # --- Learning (human feedback / few-shot examples) ---
+    SettingSpec("learning_max_examples", None, "3", "int",
+                "Max reference examples sent to Claude per analysis (0 = off)",
+                hint="Verified examples from this site are prepended to each Claude call as "
+                     "few-shot calibration images.  0 disables the feature; max 6."),
+    SettingSpec("learning_use_history", None, "1", "bool",
+                "Send recent readings to Claude as context",
+                hint="When on, the last few readings (within 2 hours) are summarised and sent "
+                     "to Claude before the current images. Claude uses them as a soft prior — "
+                     "it will still report a sudden change when the images show one — which "
+                     "helps keep level_index consistent across consecutive checks."),
+    SettingSpec("min_confidence", None, "0.5", "float",
+                "Force a re-check before a CRITICAL alert when calibrated confidence is below this (0 = off)",
+                hint="When the calibrated confidence of a CRITICAL reading is below this threshold, "
+                     "the alert enters the same pending/re-check path as critical_confirm — even when "
+                     "critical_confirm is off. Set to 0 to disable. Range: 0.0–1.0."),
 ]
 
 SPEC_BY_KEY = {s.key: s for s in SPECS}

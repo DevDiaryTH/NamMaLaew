@@ -216,6 +216,8 @@ Needs zigbee2mqtt + an MQTT broker already on your LAN.
 | Update | `git pull && docker compose up -d --build` |
 | After editing `.env` | `docker compose up -d` |
 | Watch logs | `docker compose logs -f monitor` |
+| Mark a reading right or wrong | **TIMELINE** → open the reading → **◆ FEEDBACK** → **CORRECT** or **WRONG** (with **TRUE STATUS** and **TRUE LEVEL INDEX**) → **SAVE FEEDBACK** |
+| Add a reference example for Claude | Same form → tick **USE AS REFERENCE EXAMPLE**. Only while the reading's snapshots still exist (`SNAPSHOT_RETENTION_HOURS`, default 7 days). If an answer that used examples or history is lower than the previous reading, Claude checks again without them and the higher result is kept. Manage them in **SETTINGS** → **◆ LEARNING** |
 
 **What triggers alerts:**
 
@@ -223,6 +225,7 @@ Needs zigbee2mqtt + an MQTT broker already on your LAN.
 - **CRITICAL:** water at the red line
   - `level_index` ≥ 90 counts only when no red line is drawn; with a red line it can only raise WARNING
   - Confirmed by a second reading ~2 min later (stops false alarms from dark or wet floors)
+  - A CRITICAL whose calibrated confidence is below `min_confidence` (default 0.5) is always re-checked this way, even with `critical_confirm` off
   - Repeats every 10 min while critical
 - **Failure:** 3 checks in a row with no result, a camera down, or the water edge not visible at the red line
 
@@ -246,7 +249,7 @@ More: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## More docs
 
-- [How it works](docs/HOW-IT-WORKS.md): architecture, capture cycle, water-level index, Claude cost
+- [How it works](docs/HOW-IT-WORKS.md): architecture, capture cycle, water-level index, Claude cost, feedback and learning
 - [Configuration](docs/CONFIGURATION.md): every `.env` key and dashboard setting
 - [Troubleshooting](docs/TROUBLESHOOTING.md): all symptoms and known issues
 - [Development](docs/DEVELOPMENT.md): tests, CLI flags, code layout
